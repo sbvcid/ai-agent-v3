@@ -14,9 +14,12 @@ Phase 0 — Deterministic Agent Core
 - Goal
 - VerificationStatus
 - AgentState
+- ExecutionState
+- FinalTaskStatus
 - Mock LLM
 - Fake Runtime
 - Structured Event Log
+- Minimal JSON State Checkpoint
 
 首先讓以下閉環可以在完全假的環境中運作：
 
@@ -345,31 +348,22 @@ VERIFY
 
 # 7. Agent Execution Status
 
-不得使用單一 enum 同時混合：
+不得使用單一 enum 同時混合「目前是否正在執行」與「最終任務結果」。
+
+必須嚴格區分為兩個獨立型別：
+
+### 7.1 ExecutionState（執行狀態）
 
 ```text
-目前是否正在執行
+Running
+Waiting
 ```
 
-與：
+Agent 在尚未終止前，其生命週期狀態屬於 `ExecutionState`（正在處理或等待外部 Job / 條件）。
 
-```text
-最終任務結果
-```
+`Continue` 絕對不得作為狀態型別，未終止即代表持續在 `ExecutionState` 循環。
 
-概念上應區分：
-
-```text
-Execution State
-```
-
-以及：
-
-```text
-Final Task Status
-```
-
-Final Task Status 至少：
+### 7.2 FinalTaskStatus（終止結果）
 
 ```text
 Done
@@ -378,17 +372,7 @@ Impossible
 NeedUser
 ```
 
-Agent 在尚未完成任務時屬於：
-
-```text
-Running / Waiting
-```
-
-之類的 execution state。
-
-`Continue` 不應作為最終 Task Status。
-
-「Continue」只代表 Agent 在決策循環中沒有結束任務。
+`AgentDecision::Finish(FinalTaskStatus)` 必須且只能使用 `FinalTaskStatus`，絕對不得使用包含 Running 的型別。
 
 ---
 
@@ -3189,6 +3173,33 @@ VERIFY
 DONE
 ```
 
+---
+
+# 80. Layered Architecture: Action vs ToolCall
+
+系統明確區分模型通訊層與 Core 領域模型：
+
+* **ToolCall 屬於 LLM / Provider / Wire protocol layer**：表示模型輸出的外部工具呼叫協議（不可信輸入）。
+* **Action 是 Agent Core 的 Canonical Domain Model**：表示 Agent 決定對環境執行的操作（`Observe`, `Execute`, `Interact`, `Wait`）。
+* **ActionResult 是 Runtime 的 Canonical Result Model**：表示 Runtime 執行 Action 後的結構化客觀結果。
+* **ToolResult 不得成為第二套 Runtime Result Model**：Runtime 永遠回傳 `ActionResult`，再由 Observation System 轉換為環境 `Observation`。
+* **Provider Adapter 負責轉換**：Adapter 負責將 LLM 的 `ToolCall` 驗證、正規化並映射轉換為 Core 的 `Action`（包裝於 `AgentDecision::Act(Action)`）。
+* **Runtime 不直接處理 ToolCall**：Runtime 只依賴 `Action`，完全與任何特定模型或 LLM 協議解耦。
+
+---
+
+# 81. Phase 0 Persistence & Checkpoint Boundary
+
+本專案在 Phase 0 必須建立最小狀態持久化與恢復能力：
+
+* **核心責任**：使 AgentState 跨越 Process lifetime，支援 `save_checkpoint -> simulated crash -> load_checkpoint -> resume loop`。
+* **儲存實作**：第一版嚴格使用 **Serde + JSON 檔案**。
+* **技術限制**：**不引入 SQLite，不引入任何資料庫層**，不建立複雜交易與鎖定機制。
+* **模組邊界**：Checkpoint 抽象服務於 `Agent Core`（保存 `AgentState`、Goal、Knowledge States、Event Cursor），不綁定任何 Windows Runtime 細節。
+* **測試邊界**：僅用於閉環驗證 Mandatory Closed-Loop Scenario 9（`Crash → Resume`）。極端系統當機或斷電防護非 Phase 0 必要範圍。
+
+---
+
 v3 的成功標準不是：
 
 ```text
@@ -3215,7 +3226,7 @@ Runtime
     負責實際操作電腦
 
 Persistence
-    負責讓長時間任務跨越 Process lifetime
+    負責讓長時間任務跨越 Process lifetime（Phase 0 採用最小 JSON Checkpoint）
 
 Windows
     負責實際 OS 權限與環境邊界

@@ -1,6 +1,15 @@
 # Agent Runtime 實作任務
 
-你現在負責將本專案 `01~06 AGENTS.md` 中定義的 Agent Runtime 規格，逐步實作成可運作的程式。
+本專案的設計與開發規格由以下文件共同定義：
+
+AGENTS.md
+docs/01_REQUIREMENTS.md
+docs/02_CONSTRUCTION.md
+docs/03_INTERFACES.md
+docs/04_ACCEPTANCE_TESTS.md
+docs/05_TEST_PLAN.md
+
+你現在負責將本專案中定義的 Agent Runtime 規格，逐步實作成可運作的程式。
 
 本任務必須遵守專案中的 DEVELOPMENT_WORKFLOW.md。任何 Stage 的執行、checkpoint、狀態更新、中斷恢復與重新接手行為，均以該文件為準。
 
@@ -22,7 +31,7 @@
 * 已安裝 Ollama
 * 已有模型：`gemma4:26b`
 * Agent Runtime 目前處於開發階段
-* `01~06 AGENTS.md` 是目前主要設計規格
+* `AGENTS.md 與 docs/01~05` 是目前主要設計規格
 * 專案可能已經存在部分 Runtime、Tool、LLM adapter 或測試
 * 不要因為實作方便而自行重新設計整套架構
 * 優先遵循現有 `AGENTS.md`
@@ -86,7 +95,7 @@
 
 # 規格優先於實作
 
-`01~06 AGENTS.md` 是設計依據。
+`AGENTS.md 與 docs/01~05` 是設計依據。
 
 如果你發現：
 
@@ -117,33 +126,31 @@
 
 ---
 
-# 第一階段：Repository 與規格審查
+---
 
-這一階段只做分析。
+# 第一階段：Repository 與規格審查與 IMPLEMENTATION_STATUS.md
+
+這一階段只做分析與進度基準建立。
 
 完整閱讀：
 
-* `01~06 AGENTS.md`
-* 所有相關 source code
-* `Cargo.toml`
-* 現有測試
-* 現有 LLM adapter
-* 現有 Ollama integration
-* 現有 Tool implementation
-* Runtime 相關 module
+* AGENTS.md
+* DEVELOPMENT_WORKFLOW.md
+* docs/01_REQUIREMENTS.md
+* docs/02_CONSTRUCTION.md
+* docs/03_INTERFACES.md
+* docs/04_ACCEPTANCE_TESTS.md
+* docs/05_TEST_PLAN.md
 
-**第一階段禁止修改程式碼。**
+第一階段禁止修改任何程式碼、不得建立 Cargo 專案、不得修改 tests。
 
 分析：
 
-1. 目前 Runtime 架構
-2. `01~06 AGENTS.md` 各自負責什麼
-3. 哪些規格已經實作
-4. 哪些規格尚未實作
-5. 哪些部分與規格不一致
-6. 是否存在資料結構或 protocol 衝突
-7. 目前最大的架構風險
-8. 建議的最小實作順序
+1. 目前 Runtime 架構現況
+2. AGENTS.md 與 docs/01~05 各自負責什麼
+3. 哪些規格已經實作、哪些尚未實作
+4. 找出所有規格衝突並進行裁決與同步
+5. 建立 IMPLEMENTATION_STATUS.md 作為專案可恢復進度基準
 
 完成後停止。
 
@@ -151,501 +158,203 @@
 
 # 第二階段：Canonical Core Data Model
 
-這一階段只處理 Agent Runtime 的核心資料結構。
+這一階段只處理 Agent Core 的核心領域資料結構（不引入 JSON serde、不碰磁碟、不碰 Tool）。
 
-先確認並統一必要的核心概念，例如：
+確認並統一核心概念型別：
 
-* AgentInput
-* AgentObservation
-* AgentDecision
-* ToolCall
-* ToolResult
-* Finish / FinalResponse
-* AgentEvent
-* Run / Execution Context
+* Goal
+* AgentDecision（Observe, Act(Action), Wait, Finish(FinalTaskStatus)）
+* Action（Observe, Execute, Interact, Wait）
+* ActionResult（由 Runtime 產生的客觀執行結果）
+* Observation（環境證據）
+* AgentState（Working Memory）
+* ExecutionState（Running, Waiting）
+* FinalTaskStatus（Done, Blocked, Impossible, NeedUser）
 
-實際名稱必須以 `01~06 AGENTS.md` 最終確定的規格為準。
+重要規則：
 
-目標：
+* **Action 是 Core 的 canonical domain model**，AgentDecision 必須使用 Action。
+* **嚴格分離 ExecutionState 與 FinalTaskStatus**，AgentDecision::Finish 必須使用 FinalTaskStatus。
+* 本階段不包含 ToolCall 或 ToolResult，ToolCall 屬於後續 LLM wire protocol。
 
-**整個 Runtime 必須使用同一套 canonical data model。**
+最小必要驗證：
 
-禁止：
-
-* A module 使用 `thought`
-* B module 使用 `reasoning`
-* C module 使用另一個代表同一概念的欄位
-
-除非規格明確要求它們是不同概念。
-
-這一階段完成後：
-
-* 編譯
-* 執行相關 unit tests
-* 驗證 serialization / deserialization
-* 驗證不同 module 使用相同型別
+* `cargo check --lib`
+* `cargo test --lib core::types`（純記憶體型別構建與狀態轉移測試）
 
 完成後停止。
 
 ---
 
-# 第三階段：Serialization / Schema Validation
+# 第三階段：Schema Serialization, Strict Validation & State Checkpoint
 
-建立核心資料結構的序列化與反序列化。
+建立核心資料結構的序列化、嚴格反序列化驗證，以及 Phase 0 最小 Checkpoint 抽象。
 
-特別確認：
+範圍：
 
-* AgentDecision
-* ToolCall
-* ToolResult
-* Finish
+1. **Serde JSON 實作**：
+   * AgentDecision、Action、ActionResult、Observation 的序列化與反序列化。
+   * 嚴格解析驗證（無效 enum、缺少欄位時回傳結構化 ParseError，禁止容忍非法輸入）。
+2. **Minimal JSON Checkpoint 抽象**：
+   * 建立 `CheckpointStore` 抽象介面。
+   * 使用 Serde + JSON 檔案保存與載入 `AgentState`。
+   * **禁止引入 SQLite 或任何外部資料庫**。
 
-在 LLM 與 Runtime 之間傳遞時具有明確且穩定的 schema。
+最小必要驗證：
 
-要求：
-
-* JSON 格式固定
-* 欄位名稱固定
-* type / enum 固定
-* invalid input 必須產生明確錯誤
-* 不得默默接受錯誤 schema
-* 不得自行猜測缺失欄位
-
-建立必要的 schema tests。
-
-完成後：
-
-* compile
-* test
-* 驗證 valid / invalid cases
+* `cargo test --test schema_tests`（測試合法/非法 JSON 解析）
+* `cargo test --test checkpoint_tests`（測試 AgentState 序列化存檔與還原）
 
 完成後停止。
 
 ---
 
-# 第四階段：Deterministic Mock LLM
+# 第四階段：Deterministic Mock LLM & Fake Runtime
 
-建立 Mock LLM。
+建立純記憶體、無外部副作用的測試替身（Test Doubles）。
 
-Mock LLM 不需要真正理解自然語言。
+範圍：
 
-它的目的只是驗證 Runtime。
+1. **Mock LLM Provider**：
+   * 不依賴真實自然語言模型。
+   * 支援腳本化（Scripted Decisions），可依照傳入的上下文與步驟依序回傳固定 AgentDecision。
+2. **Fake Runtime**：
+   * 純記憶體模擬 Action 執行。
+   * 可受控地模擬成功、失敗、timeout、AccessDenied 等情境。
+   * 回傳客觀的 `ActionResult` 並轉換為 `Observation`。
 
-建立 deterministic scenario，例如：
+最小必要驗證：
 
-User：
-
-「建立 test.txt，內容為 hello。」
-
-Mock LLM 第一次固定回傳：
-
-ToolCall：
-
-`write_file("test.txt", "hello")`
-
-Runtime 執行 Tool。
-
-Tool 回傳成功。
-
-Mock LLM 第二次收到 Tool Result 後固定回傳：
-
-Finish：
-
-「完成。」
-
-測試必須實際驗證：
-
-Observe
-→ Think
-→ Act
-→ Observe
-→ Think
-→ Finish
-
-這一階段不需要 Ollama。
-
-目的：
-
-**證明 Runtime Loop 本身正確，而不是證明 LLM 很聰明。**
-
-完成後：
-
-* 執行 Mock test
-* 確認 Tool Call 被正確解析
-* 確認 Tool Result 被送回 LLM
-* 確認 Finish 能正確結束 loop
-* 確認沒有 infinite loop
+* `cargo test --test test_doubles_test`（驗證 Mock LLM 回傳序列與 Fake Runtime 回應）
 
 完成後停止。
 
 ---
 
-# 第五階段：最小 Agent Loop
+# 第五階段：Deterministic Closed-Loop & Event Trace (Phase 0 核心)
 
-建立通用 Agent Loop。
+在純記憶體環境中跑通 Agent 核心閉環，並具備結構化 Event Trace 與狀態恢復能力。
 
-目標：
+範圍：
 
-User
-→ Agent Runtime
-→ LLM
-→ Decision
-→ Tool Call
-→ Tool Execution
-→ Tool Result
-→ LLM
-→ Final Answer
+1. **最小 Agent Loop**：
+   `Goal -> Observe -> Decide -> Act -> Observe -> Evaluate/Revise -> Verify -> Finish`。
+2. **Structured Event Log / Trace**：
+   記錄 step, run_id, event_type, payload。
+3. **AT-CORE-001 驗收場景實作**：
+   * Agent 取得 Goal。
+   * Agent 產生 Action。
+   * Fake Runtime 故意回傳失敗（Failure Observation）。
+   * Agent 收到失敗後，**不直接結束**，而是修改 Hypothesis / Strategy。
+   * Agent 採取不同的 Action。
+   * Fake Runtime 回傳成功。
+   * Agent 執行 Goal Verification。
+   * Agent 回傳 Finish(Done)。
+4. **Crash → Resume 場景驗證**：
+   * 在閉環執行中途呼叫 Checkpoint 保存狀態。
+   * 銷毀執行期記憶體 context，從 JSON Checkpoint 載入狀態。
+   * 恢復 Agent Loop 繼續執行直到 Finish(Done)。
 
-Runtime 必須支援：
+最小必要驗證：
 
-* user input
-* LLM request
-* LLM response
-* decision parsing
-* tool call
-* tool execution
-* tool result
-* 下一輪 decision
-* finish
-
-重要：
-
-**不得將 Agent workflow 寫死。**
-
-Runtime 不得假設：
-
-`read_file → write_file → run_python → finish`
-
-也不得假設固定 Tool 順序。
-
-LLM 應該可以決定下一步。
-
-Runtime 只負責：
-
-* 提供 observation
-* 呼叫 LLM
-* 解析 decision
-* 執行 Tool
-* 回傳 Tool Result
-* 控制 execution lifecycle
-
-完成後使用 Mock LLM 驗證不同 Tool sequence。
-
-例如：
-
-Scenario A：
-
-LLM：
-
-`read_file → finish`
-
-Scenario B：
-
-LLM：
-
-`search_files → read_file → finish`
-
-Scenario C：
-
-LLM：
-
-`run_python → finish`
-
-Runtime 都必須正常工作。
+* `cargo test --test closed_loop_test at_core_001`
+* `cargo test --test closed_loop_test crash_resume`
 
 完成後停止。
 
 ---
 
-# 第六階段：Tool System
+# 第六階段：Safe Filesystem Tools
 
-將現有工具統一成 Tool abstraction。
+建立基礎檔案系統操作工具，並內建嚴格安全路徑邊界。
 
-第一批工具：
+範圍：
 
-* read_file
-* write_file
-* search_files
-* run_python
-* run_command
-* search_web
+1. **Tool Trait 抽象**：
+   * 定義通用 Tool 介面（名稱、描述、參數 schema、execute）。
+   * 執行結果統一回傳 `ActionResult`。
+2. **核心檔案工具**：
+   * `read_file`
+   * `write_file`
+3. **安全邊界**：
+   * 工作目錄限制（嚴格限制在指定的測試目錄內）。
+   * 路徑正規化（canonicalize，嚴防 `..` 目錄穿越攻擊）。
+   * 非法路徑拒絕並回傳結構化錯誤。
 
-每個 Tool 至少需要具有：
+最小必要驗證：
 
-* name
-* description
-* input schema
-* execute
-* structured result
-* structured error
-
-Runtime 不應該知道每個 Tool 的內部實作。
-
-Runtime 只應該知道：
-
-「這是一個可以被呼叫的 Tool。」
-
-完成後：
-
-* compile
-* Tool unit tests
-* Mock Agent integration tests
+* `cargo test --test fs_tool_tests`（驗證合法讀寫、目錄穿越攔截、邊界保護）
 
 完成後停止。
 
 ---
 
-# 第七階段：Tool Safety Boundary
+# 第七階段：Safe Process Execution
 
-優先處理：
+建立安全的系統指令執行工具，隔離子行程風險。
 
-* run_command
-* run_python
-* write_file
+範圍：
 
-至少確認：
+1. **指令工具**：
+   * `run_command`
+2. **行程安全邊界**：
+   * 工作目錄綁定。
+   * 非同步超時強制終止（Async Timeout）。
+   * stdout / stderr 長度截斷保護（防止巨大輸出撐爆記憶體）。
+   * 結構化退出碼與錯誤分類。
 
-* working directory
-* path validation
-* timeout
-* stdout
-* stderr
-* exit code
-* structured error
-* execution failure handling
-* 防止無限執行
+最小必要驗證：
 
-先建立清楚的 capability boundary。
-
-不要在這一階段建立過度複雜的 sandbox。
-
-完成後：
-
-* 正常案例測試
-* 錯誤案例測試
-* timeout 測試
-* path validation 測試
+* `cargo test --test process_tool_tests`（驗證正常執行、超時終止、輸出截斷）
 
 完成後停止。
 
 ---
 
-# 第八階段：Ollama Adapter
+# 第八階段：Ollama Provider Adapter
 
-只有前面的 Mock Runtime 通過後，才接真實 Ollama。
+在 Mock 閉環與 Safe Tools 均已完備後，實作對接真實本地 Ollama（`gemma4:26b`）的 Provider Adapter。
 
-使用：
+範圍：
 
-`gemma4:26b`
+1. **LLM Provider Trait 實作**：
+   * 對接本地 Ollama HTTP API。
+   * 支援 model name (`gemma4:26b`)、endpoint、timeout、generation options。
+2. **Wire Protocol 映射（ToolCall -> Action）**：
+   * 將 Ollama 輸出的 `ToolCall` 解析、驗證並映射轉換為強型別 `Action`，包裝於 `AgentDecision::Act(Action)`。
+   * 模型輸出若格式錯誤，由 Adapter 捕捉並回傳結構化錯誤，禁止未經驗證的字串穿透至 Runtime。
 
-Ollama 必須被實作為 LLM provider / adapter。
+最小必要驗證：
 
-Runtime 不應該直接依賴 Ollama API。
-
-至少支援可設定：
-
-* model name
-* endpoint
-* timeout
-* context size
-* temperature
-* 其他必要 generation parameters
-
-完成後先做最小 Ollama connectivity test。
-
-確認：
-
-Agent Runtime
-→ Ollama Adapter
-→ gemma4:26b
-→ response
+* `cargo test --test ollama_adapter_test connectivity_test -- --ignored`
 
 完成後停止。
 
 ---
 
-# 第九階段：Real LLM Agent Integration
+# 第九階段：Real LLM Agent Integration & Release Gate
 
-使用：
+使用真實模型執行自主任務，並執行專案最終 Release Gate。
 
-`gemma4:26b`
+範圍：
 
-進行第一個真實 Agent 任務。
+1. **真實任務整合**：
+   * 將 Ollama Adapter、Agent Loop 與 Safe Tools 整合。
+   * 執行真實目標任務（如讀取指定檔案並回答內容）。
+2. **完整行為驗收矩陣**：
+   * 依據 `docs/04_ACCEPTANCE_TESTS.md` 執行驗收案例。
+3. **專案品質 Release Gate**：
+   * 全套測試通過。
+   * 程式碼格式與靜態分析無警告。
 
-例如：
+最小必要驗證：
 
-「讀取目前專案的 Cargo.toml，告訴我 package name。」
-
-預期：
-
-User
-→ Gemma
-→ read_file
-→ Tool Result
-→ Gemma
-→ Final Answer
-
-注意：
-
-這一階段是測試 Gemma 與 Runtime 的整合。
-
-不要因為 Gemma 沒有正確產生 Tool Call，就修改 Runtime 讓流程變成硬編碼。
-
-如果 Gemma 輸出不符合 schema：
-
-先記錄實際輸出。
-
-判斷問題來自：
-
-* prompt
-* tool schema
-* parser
-* LLM adapter
-* model behavior
-
-再採取最小修正。
+* `cargo test --test real_agent_tests -- --ignored`
+* `cargo test`（全套測試）
+* `cargo fmt --check`
+* `cargo clippy --all-targets`
 
 完成後停止。
-
----
-
-# 第十階段：End-to-End Tests
-
-建立真實 Agent E2E 測試。
-
-至少包含：
-
-Test 1：
-
-「建立 hello.txt，內容是 hello world。」
-
-Test 2：
-
-「讀取 hello.txt，告訴我內容。」
-
-Test 3：
-
-「找出專案裡所有包含某個字串的檔案。」
-
-Test 4：
-
-「用 Python 計算 12345 * 67890。」
-
-每個測試都必須記錄：
-
-LLM
-→ Tool Call
-→ Tool Result
-→ LLM
-→ Final Answer
-
-完成後停止。
-
----
-
-# 第十一階段：Execution Trace
-
-建立最基本的 execution trace。
-
-例如：
-
-Run
-├─ user_input
-├─ llm_request
-├─ llm_response
-├─ tool_call
-├─ tool_result
-├─ llm_request
-└─ final_response
-
-每個 event 至少包含：
-
-* timestamp
-* run_id
-* step
-* event type
-* payload / summary
-
-目的：
-
-發生錯誤時，可以判斷問題究竟來自：
-
-* LLM decision
-* schema
-* parser
-* Runtime routing
-* Tool execution
-* Tool result
-* context 傳遞
-
-完成後：
-
-* compile
-* unit tests
-* integration tests
-* E2E test
-* trace verification
-
-完成後停止。
-
----
-
-# 暫時禁止實作
-
-在以上最小 Runtime 完成以前，不要實作：
-
-* Multi-Agent
-* Long-term Memory
-* RAG
-* 複雜 Planner
-* Browser automation
-* Self-reflection loop
-* Agent spawning
-* 複雜 permission system
-* distributed runtime
-* production deployment
-
-這些功能不是目前優先事項。
-
----
-
-# 最終架構目標
-
-最終需要能夠真正執行：
-
-User
-↓
-Agent Runtime
-↓
-LLM Provider
-↓
-Ollama
-↓
-gemma4:26b
-↓
-AgentDecision
-↓
-Tool
-↓
-ToolResult
-↓
-Agent Runtime
-↓
-LLM
-↓
-Final Answer
-
-核心原則：
-
-**LLM 負責決定下一步。**
-
-**Runtime 負責執行決定。**
-
-**Tool 負責操作環境。**
-
-**Observation / Tool Result 負責把環境狀態帶回 Agent。**
-
-不得將 Agent workflow 硬編碼成固定順序。
 
 ---
 

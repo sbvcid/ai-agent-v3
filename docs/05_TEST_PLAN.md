@@ -493,6 +493,12 @@ Test:
 
 The test must verify recovery behavior, not merely that a database row or file exists.
 
+Phase 0 Boundary:
+* Phase 0 階段嚴格限定為 **Minimal JSON Checkpoint 抽象**（使用 Serde + JSON 檔案）。
+* 驗證「保存 AgentState → 模擬行程終止 → 載入 AgentState → 恢復 Agent Loop 繼續執行」。
+* **禁止在 Phase 0 引入 SQLite 或外部資料庫層**。
+* 真實作業系統崩潰、斷電保護與分散式恢復不屬於 Phase 0 必要範圍。
+
 ---
 
 ### 7.11 LLM Boundary

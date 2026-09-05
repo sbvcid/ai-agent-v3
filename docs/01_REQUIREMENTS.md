@@ -538,7 +538,9 @@ struct AgentState {
 
     verification: VerificationState,
 
-    status: TaskStatus,
+    execution_state: ExecutionState,
+
+    final_status: Option<FinalTaskStatus>,
 }
 ```
 
@@ -2108,15 +2110,28 @@ Goal Success
 
 ---
 
-# 36. Task Status
+# 36. Execution State and Final Task Status
 
-Task Status 與 Agent Decision 必須分離。
+系統嚴格分離「執行狀態（Execution State）」與「最終任務結果（Final Task Status）」，不得使用單一 enum 混用。
 
-Task Status 概念上：
+### 36.1 ExecutionState（執行中狀態）
 
 ```rust
-enum TaskStatus {
-    Continue,
+enum ExecutionState {
+    Running,
+    Waiting,
+}
+```
+
+* `Running`：Agent 正在進行觀察、推理、決策或調度執行。
+* `Waiting`：Agent 正在等待非同步 Job、背景程序或外部條件。
+
+`Continue` 絕對不得作為狀態型別，未結束即屬於 `ExecutionState` 運作中。
+
+### 36.2 FinalTaskStatus（最終終止結果）
+
+```rust
+enum FinalTaskStatus {
     Done,
     Blocked,
     Impossible,
@@ -2125,12 +2140,6 @@ enum TaskStatus {
 ```
 
 其中：
-
-```text
-Continue
-```
-
-表示 Task 尚未完成，Agent 應繼續工作。
 
 ```text
 Done
@@ -2142,19 +2151,19 @@ Done
 Blocked
 ```
 
-表示理論上可以完成，但目前缺少必要條件。
+表示理論上可以完成，但目前缺少必要外部條件（如外部服務暫時不可用）。
 
 ```text
 Impossible
 ```
 
-表示在目前環境與能力限制下沒有合理完成方法。
+表示在目前環境、權限與能力限制下已確定無法完成。
 
 ```text
 NeedUser
 ```
 
-表示需要實際使用者介入。
+表示已確認需要實際人類使用者介入提供資訊、授權或操作。
 
 Process 的：
 

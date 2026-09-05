@@ -45,31 +45,41 @@ Agent Core
 
 # 2. Core Architecture
 
-Agent v3 的核心資料流：
+Agent v3 的核心分層與資料流：
 
 ```text
-User Goal
-    ↓
+LLM / Provider Layer
+        ↓ ToolCall
 Agent Core
-    ↓
-AgentDecision
-    ↓
-Action
-    ↓
+        ↓ AgentDecision::Act(Action)
 Runtime
-    ↓
-ActionResult / Observation
-    ↓
-Observation Store
-    ↓
-Agent State
-    ↓
+        ↓ Action::Execute(...)
+Environment
+        ↓
+ActionResult
+        ↓
+Observation
+        ↓
+Observation Store / Agent State
+        ↓
 Context Compiler
-    ↓
-LLM
-    ↓
+        ↓
+LLM Provider Adapter
+        ↓
 Next AgentDecision
 ```
+
+### Layered Architecture: Action vs ToolCall
+
+系統明確區分 LLM 通訊層與 Core 領域模型：
+
+* **ToolCall 屬於 LLM / Provider / Wire protocol layer**：表示模型輸出的工具呼叫協議（如 Ollama 或其他 LLM 的 JSON/function call 格式）。
+* **Action 是 Agent Core 的 Canonical Domain Model**：表示 Agent 決定對環境執行的操作（`Observe`, `Execute`, `Interact`, `Wait`）。
+* **ActionResult 是 Runtime 的 Canonical Result Model**：表示 Runtime 執行 Action 後的結構化客觀結果。
+* **ToolResult 不得成為第二套 Runtime Result Model**：Runtime 永遠回傳 `ActionResult`，再由 Observation System 轉換為環境 `Observation`。
+* **Provider Adapter 負責轉換**：Adapter 負責將 LLM 的 `ToolCall` 驗證、正規化並映射轉換為 Core 的 `Action`（包裝於 `AgentDecision::Act(Action)`）。
+* **Runtime 不直接處理 ToolCall**：Runtime 只依賴 `Action`，完全與任何特定模型或 LLM 協議解耦。
+* **Core 不依賴特定 LLM 協議**：Core 與 Runtime 均不依賴 Ollama 專用格式。
 
 完整工作循環：
 
@@ -133,7 +143,9 @@ Observation
 ObservationStore
 Job
 VerificationState
-TaskStatus
+ExecutionState
+FinalTaskStatus
+CheckpointStore
 ```
 
 Engineering Runtime 相關能力也屬於 Runtime Capability 的一部分：
@@ -176,7 +188,8 @@ Recent Observations
 Running Jobs
 Verification State
 Remaining Work
-Task Status
+Execution State
+Final Status
 ```
 
 概念上：
@@ -195,7 +208,8 @@ AgentState
 ├── RunningJobs
 ├── VerificationState
 ├── RemainingWork
-└── Status
+├── ExecutionState
+└── FinalStatus
 ```
 
 具體資料結構由實作者決定。
@@ -705,9 +719,9 @@ AgentDecision 是 Agent Core 對「下一步做什麼」的決策。
 
 ```text
 Observe
-Act
+Act(Action)
 Wait
-Finish
+Finish(FinalTaskStatus)
 ```
 
 概念：
@@ -715,117 +729,96 @@ Finish
 ```text
 AgentDecision
 ├── decision type
-├── action / request
+├── action / request (when Act)
+├── final_status (when Finish)
 ├── intent
 └── expected progress
 ```
 
 其中：
 
-```text
-Observe
-```
-
-代表需要取得更多資訊。
-
-```text
-Act
-```
-
-代表要執行一個 Action。
-
-```text
-Wait
-```
-
-代表目前最合理的下一步是等待環境或 Job 發生變化。
-
-```text
-Finish
-```
-
-代表 Agent 認為任務已達到最終狀態。
+* `Observe`：代表需要取得更多資訊。
+* `Act(Action)`：代表要執行一個 Runtime Action。Action 是 Core 的 canonical domain model。
+* `Wait`：代表目前最合理的下一步是等待環境或 Job 發生變化。
+* `Finish(FinalTaskStatus)`：代表 Agent 認為任務已達到終止狀態，必須明確帶有 `FinalTaskStatus`。
 
 ---
 
-# 22. Finish Status
+# 22. Execution State vs Final Task Status
 
-`Finish` 必須帶有最終 Task Status。
+本系統嚴格區分「執行中狀態（ExecutionState）」與「最終終止狀態（FinalTaskStatus）」，不得使用單一 enum 混淆兩者。
 
-概念上：
+### 22.1 ExecutionState（執行中狀態）
 
-```text
-Done
-Blocked
-Impossible
-NeedUser
-```
-
-這四種才是 Task 的最終結果。
-
-`Running` 是執行中的 Task Status，不應與上述終止結果混淆。
-
-`Continue` 可以作為一般語意描述：
-
-```text
-Agent should continue
-```
-
-但不應作為必要的 AgentDecision 類型。
-
----
-
-# 23. Task Status
-
-概念上：
+表示 Agent 目前任務是否仍在生命週期中進行：
 
 ```text
 Running
+Waiting
+```
+
+* **Running**：Agent 正在進行觀察、思考決策或調度執行。
+* **Waiting**：Agent 正在等待非同步 Job、背景程序或外部條件變化。
+
+### 22.2 FinalTaskStatus（最終終止結果）
+
+表示任務終止時的客觀最終結果。`AgentDecision::Finish` 只能且必須攜帶此狀態：
+
+```text
 Done
 Blocked
 Impossible
 NeedUser
 ```
 
-### Running
+* **Done**：有足夠 Evidence 證明原始 User Goal 已經被驗證完成。
+* **Blocked**：目前存在外部阻礙（例如外部服務暫時不可用、網路斷線），使任務暫時無法前進，但尚無證據證明 Goal 本身不可能完成。
+* **Impossible**：根據目前環境、權限、客觀能力與不可逆限制，已確定 Goal 本身在此條件下無法達成。
+* **NeedUser**：已確認必須由人類使用者提供特定資訊、輸入密碼、授權或在 UAC/Secure Desktop 上進行實體操作。「Agent 不知道怎麼做」嚴禁濫用為 NeedUser。
 
-Task 尚未進入最終狀態。
+`Continue` 絕對不得作為 FinalTaskStatus。未結束的任務一律處於 `ExecutionState`（Running 或 Waiting）。
 
-### Done
+---
 
-有足夠 Evidence 證明 Original Goal 已完成。
+# 23. Layered Architecture: Action vs ToolCall Canonical Rules
 
-### Blocked
+本系統明確回答以下四個核心架構問題：
 
-目前存在阻礙，使 Task 無法繼續有效進展。
+### 1. ToolCall 到底在哪一層？
+* **答案**：`ToolCall` 屬於 **LLM / Provider / Wire protocol layer**。
+* 它代表語言模型（如 Ollama `gemma4:26b`）產生的外部工具呼叫字串或 JSON payload。它屬於外部不可信輸入。
 
-阻礙可能是：
+### 2. Action 到底在哪一層？
+* **答案**：`Action` 屬於 **Agent Core 與 Runtime 介面層（Canonical Domain Model）**。
+* `Action` 是 Agent Core 的一等公民（Canonical Type），定義為 `Observe`, `Execute`, `Interact`, `Wait`。`AgentDecision::Act(Action)` 必須持有此強型別。
 
-```text
-external service unavailable
-hardware unavailable
-required resource temporarily unavailable
-environmental condition
-```
+### 3. 兩者如何轉換？
+* **答案**：由 **LLM Provider Adapter** 負責單向轉換與驗證：
+  ```text
+  LLM Wire Output (ToolCall)
+         ↓
+  Provider Adapter (Parse & Validate Arguments)
+         ↓
+  Agent Core: AgentDecision::Act(Action::Execute(...))
+  ```
+* Adapter 負責解析 LLM 輸出的工具名稱與參數，驗證符合 schema 後映射為強型別的 `Action`。如果 LLM 輸出無效或格式錯誤，在 Adapter 層被攔截為結構化解析錯誤，不得直接穿透到 Runtime。
 
-### Impossible
+### 4. Runtime 為什麼不直接處理 ToolCall？
+* **答案**：因為 **Runtime 是通用的電腦操作層，不是 LLM 的附屬擴充工具箱**。
+* Runtime 必須具備高度獨立性與通用性，無論上層模型是 gemma、claude、gpt 還是未來的本地模型，Runtime 的能力契約（Filesystem, Process, Shell, GUI 等）保持穩定不變。
+* 若 Runtime 直接依賴 `ToolCall`，每次模型協議變更或新增非 Tool-calling 模型時，整個 Runtime 都要被重寫。因此 Runtime 只接受強型別 `Action` 並回傳 `ActionResult`。
 
-根據目前 Environment、Permission、Available Capability 與可靠 Evidence，可以判定 Goal 無法完成。
+---
 
-### NeedUser
+# 24. Phase 0 Persistence & Checkpoint Boundary
 
-必須由使用者提供 Agent 無法自行取得的資訊、授權或互動。
+本專案在 Phase 0 必須建立最小狀態持久化與恢復能力：
 
-例如：
-
-```text
-password
-specific external information
-physical interaction
-Secure Desktop interaction
-```
-
-缺少一般軟體或 dependency 不應直接產生 NeedUser。
+* **目標**：驗證 `save_checkpoint -> process termination / simulated crash -> load_checkpoint -> restore AgentState -> resume loop`。
+* **儲存格式**：第一版嚴格使用 **Serde + JSON 檔案**。
+* **禁止項目**：**不引入 SQLite，不引入資料庫層**，不建立複雜交易機制。
+* **邊界**：Checkpoint 服務於 `Agent Core`（保存 `AgentState`、Goal、Knowledge States、Event Cursor），不綁定任何 Windows Runtime 細節。
+* **驗證範圍**：支援 Mandatory Closed-Loop Scenario 9（`Crash → Resume`）。真實作業系統當機或斷電防護非 Phase 0 範圍。
 
 ---
 
