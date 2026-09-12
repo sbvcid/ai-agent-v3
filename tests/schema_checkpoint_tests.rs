@@ -233,7 +233,7 @@ fn test_simulated_crash_and_context_restoration() {
             .with_intent("Finalize processing");
         restored_state.recent_actions.push(act2);
         restored_state.verification_state = VerificationState::Verified;
-        restored_state.final_status = Some(FinalTaskStatus::Done);
+        restored_state.finish(FinalTaskStatus::Done);
 
         // Save new checkpoint
         let ckpt2 = StateCheckpoint::new("ckpt-step-2", 2, restored_state).with_timestamp(12345679);

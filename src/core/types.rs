@@ -364,13 +364,32 @@ impl AgentState {
             obs.validate()?;
         }
 
-        // Invariant: If execution_state is Running or Waiting, final_status must be None.
-        if self.final_status.is_some() && self.execution_state != ExecutionState::Waiting {
-            // Note: final_status only co-exists if the task is finalized (not Running)
-            // If finished, task should not be Running.
+        // Invariant: Running state must never carry a final_status.
+        // A finalized state must have execution_state == Waiting.
+        if self.execution_state == ExecutionState::Running && self.final_status.is_some() {
+            return Err(ValidationError::InvariantViolation(
+                "AgentState cannot have final_status while execution_state is Running".to_string(),
+            ));
         }
 
         Ok(())
+    }
+
+    /// Transition the state to finished with a final task status.
+    /// Invariant: Sets execution_state to Waiting and records final_status.
+    pub fn finish(&mut self, status: FinalTaskStatus) {
+        self.execution_state = ExecutionState::Waiting;
+        self.final_status = Some(status);
+    }
+
+    /// Record an action in working memory.
+    pub fn record_action(&mut self, action: Action) {
+        self.recent_actions.push(action);
+    }
+
+    /// Record an observation in working memory.
+    pub fn record_observation(&mut self, observation: Observation) {
+        self.recent_observations.push(observation);
     }
 }
 
@@ -461,6 +480,33 @@ mod tests {
         assert!(state.active_problems.is_empty());
         assert!(state.recent_actions.is_empty());
         assert!(state.recent_observations.is_empty());
+        assert!(state.validate().is_ok());
+    }
+
+    #[test]
+    fn test_agent_state_invariant_running_cannot_have_final_status() {
+        let goal = Goal::new("Test invariant");
+        let mut state = AgentState::new(goal);
+
+        // Valid initially: Running with None
+        assert_eq!(state.execution_state, ExecutionState::Running);
+        assert!(state.final_status.is_none());
+        assert!(state.validate().is_ok());
+
+        // Invariant violation: Running with Some(Done)
+        state.final_status = Some(FinalTaskStatus::Done);
+        assert!(state.validate().is_err());
+        match state.validate() {
+            Err(ValidationError::InvariantViolation(msg)) => {
+                assert!(msg.contains("cannot have final_status while execution_state is Running"));
+            }
+            other => panic!("Expected InvariantViolation, got: {:?}", other),
+        }
+
+        // Valid transition via finish(): execution_state becomes Waiting
+        state.finish(FinalTaskStatus::Done);
+        assert_eq!(state.execution_state, ExecutionState::Waiting);
+        assert_eq!(state.final_status, Some(FinalTaskStatus::Done));
         assert!(state.validate().is_ok());
     }
 }

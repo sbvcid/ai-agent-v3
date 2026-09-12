@@ -1,7 +1,9 @@
+pub mod agent_loop;
 pub mod checkpoint;
 pub mod test_doubles;
 pub mod types;
 
+pub use agent_loop::{AgentLoop, EventTrace, LoopError, LoopEvent, LoopStepOutcome};
 pub use checkpoint::{CheckpointError, CheckpointStore, JsonFileCheckpointStore, StateCheckpoint};
 pub use test_doubles::{FakeRuntime, MockLlm};
 pub use types::{

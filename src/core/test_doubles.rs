@@ -31,6 +31,12 @@ pub struct MockLlm {
     call_count: usize,
 }
 
+impl Default for MockLlm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockLlm {
     /// Create an empty MockLlm with no scripted decisions.
     pub fn new() -> Self {
@@ -101,6 +107,12 @@ pub struct FakeRuntime {
     scripted_results: HashMap<String, ActionResult>,
     /// Every Action received, in order.
     recorded_actions: Vec<Action>,
+}
+
+impl Default for FakeRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FakeRuntime {
