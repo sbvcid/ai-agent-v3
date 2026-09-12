@@ -26,10 +26,11 @@
 //! - No `ToolCall` or `ToolResult`.
 //! - Purely in-memory, deterministic, no OS or network side effects.
 
+use crate::core::checkpoint::StateCheckpoint;
 use crate::core::test_doubles::{FakeRuntime, MockLlm};
 use crate::core::types::{
     Action, ActionResult, AgentDecision, AgentState, ExecutionState, FinalTaskStatus, Observation,
-    ObservationKind, ValidationError,
+    ObservationKind, ValidationError, VerificationState,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -48,6 +49,11 @@ pub enum LoopError {
 
     #[error("Cannot step loop: task already finalized with status: {0:?}")]
     AlreadyFinished(FinalTaskStatus),
+
+    #[error(
+        "Cannot finish task as Done: Goal has not been verified (verification state is {0:?})"
+    )]
+    UnverifiedGoal(VerificationState),
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +68,7 @@ pub enum LoopEvent {
     ActionResultReceived(ActionResult),
     ObservationProduced(Observation),
     StateUpdated,
+    GoalVerified(String),
     WaitingEntered { reason: Option<String> },
     Finished(FinalTaskStatus),
 }
@@ -134,6 +141,28 @@ impl AgentLoop {
             max_steps: 50,
             current_step: 0,
         }
+    }
+
+    /// Create an AgentLoop from an existing StateCheckpoint, restoring state and execution cursor.
+    ///
+    /// Per `docs/02` §81, Checkpoint preserves AgentState, Goal, Knowledge States, and Event Cursor.
+    pub fn from_checkpoint(checkpoint: &StateCheckpoint) -> Self {
+        Self {
+            state: checkpoint.state.clone(),
+            trace: EventTrace::new(),
+            max_steps: 50,
+            current_step: checkpoint.step_index as usize,
+        }
+    }
+
+    /// Record verification evidence and mark the goal as Verified.
+    ///
+    /// Per `docs/02` §51-53, Goal completion requires verification evidence connecting
+    /// observations to the original user goal (Action Success != Goal Success).
+    pub fn verify_goal(&mut self, evidence: impl Into<String>) {
+        let ev = evidence.into();
+        self.trace.push(LoopEvent::GoalVerified(ev.clone()));
+        self.state.verify_goal(ev);
     }
 
     /// Configure maximum step limit as a safety boundary.
@@ -235,6 +264,12 @@ impl AgentLoop {
 
             AgentDecision::Finish { status, message } => {
                 let _ = message;
+                // Goal Verification required before Done (docs/02 §51-53: Action Success != Goal Success)
+                if status == FinalTaskStatus::Done
+                    && self.state.verification_state != VerificationState::Verified
+                {
+                    return Err(LoopError::UnverifiedGoal(self.state.verification_state));
+                }
                 self.state.finish(status.clone());
                 self.trace.push(LoopEvent::Finished(status.clone()));
                 LoopStepOutcome::Finished(status)

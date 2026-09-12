@@ -46,13 +46,17 @@ pub enum KnowledgeState {
     Unknown,
 }
 
-/// Verification state of subtasks or goals.
+/// Verification status of the original user goal.
+///
+/// Strictly defined in `docs/03_INTERFACES.md` §25.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum VerificationState {
-    Unverified,
-    InProgress,
+    NotVerified,
+    Verifying,
     Verified,
     Failed,
+    Uncertain,
 }
 
 /// Execution lifecycle state of the Agent.
@@ -348,7 +352,7 @@ impl AgentState {
             recent_actions: Vec::new(),
             recent_observations: Vec::new(),
             running_jobs: Vec::new(),
-            verification_state: VerificationState::Unverified,
+            verification_state: VerificationState::NotVerified,
             remaining_work: Vec::new(),
             execution_state: ExecutionState::Running,
             final_status: None,
@@ -372,6 +376,17 @@ impl AgentState {
             ));
         }
 
+        // Invariant: Done status requires the original goal to be Verified.
+        // Per docs/02 §51-53: Action Success != Goal Success.
+        if self.final_status == Some(FinalTaskStatus::Done)
+            && self.verification_state != VerificationState::Verified
+        {
+            return Err(ValidationError::InvariantViolation(
+                "Task cannot have final_status 'Done' when verification_state is not Verified"
+                    .to_string(),
+            ));
+        }
+
         Ok(())
     }
 
@@ -380,6 +395,17 @@ impl AgentState {
     pub fn finish(&mut self, status: FinalTaskStatus) {
         self.execution_state = ExecutionState::Waiting;
         self.final_status = Some(status);
+    }
+
+    /// Record evidence and mark the original goal as Verified.
+    ///
+    /// Per `docs/02` §51-53, Action Success != Goal Success.
+    /// Goal verification requires explicit evidence connecting environment observations
+    /// to the user's original goal.
+    pub fn verify_goal(&mut self, evidence: impl Into<String>) {
+        let ev = evidence.into();
+        self.evidence.push(ev);
+        self.verification_state = VerificationState::Verified;
     }
 
     /// Record an action in working memory.
@@ -476,7 +502,7 @@ mod tests {
         assert_eq!(state.goal, goal);
         assert_eq!(state.execution_state, ExecutionState::Running);
         assert_eq!(state.final_status, None);
-        assert_eq!(state.verification_state, VerificationState::Unverified);
+        assert_eq!(state.verification_state, VerificationState::NotVerified);
         assert!(state.active_problems.is_empty());
         assert!(state.recent_actions.is_empty());
         assert!(state.recent_observations.is_empty());
@@ -503,10 +529,42 @@ mod tests {
             other => panic!("Expected InvariantViolation, got: {:?}", other),
         }
 
-        // Valid transition via finish(): execution_state becomes Waiting
+        // Valid transition via finish(): execution_state becomes Waiting, but Done requires verification
+        state.verify_goal("Verified: invariant test passed");
         state.finish(FinalTaskStatus::Done);
         assert_eq!(state.execution_state, ExecutionState::Waiting);
         assert_eq!(state.final_status, Some(FinalTaskStatus::Done));
+        assert!(state.validate().is_ok());
+    }
+
+    #[test]
+    fn test_agent_state_invariant_done_requires_verified() {
+        let goal = Goal::new("Done requires verification");
+        let mut state = AgentState::new(goal);
+
+        // Action Success != Goal Success:
+        // Even if an action succeeded, without goal verification Done is rejected
+        let action = Action::new("act-1", ActionType::Execute);
+        let result = ActionResult::success("act-1", "command exit 0");
+        let obs = Observation::from_action_result("obs-1", &result);
+        state.record_action(action);
+        state.record_observation(obs);
+
+        state.finish(FinalTaskStatus::Done);
+        assert_eq!(state.verification_state, VerificationState::NotVerified);
+        assert!(state.validate().is_err());
+        match state.validate() {
+            Err(ValidationError::InvariantViolation(msg)) => {
+                assert!(msg.contains(
+                    "cannot have final_status 'Done' when verification_state is not Verified"
+                ));
+            }
+            other => panic!("Expected InvariantViolation, got: {:?}", other),
+        }
+
+        // Now provide explicit goal verification evidence
+        state.verify_goal("Verified: output file created and checksum matches");
+        assert_eq!(state.verification_state, VerificationState::Verified);
         assert!(state.validate().is_ok());
     }
 }

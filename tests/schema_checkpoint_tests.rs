@@ -87,6 +87,27 @@ fn test_enum_variant_round_trip() {
         let de: AgentDecision = serde_json::from_str(&json).unwrap();
         assert_eq!(dec, de);
     }
+
+    // 5. VerificationState (docs/03_INTERFACES.md §25)
+    for vs in [
+        VerificationState::NotVerified,
+        VerificationState::Verifying,
+        VerificationState::Verified,
+        VerificationState::Failed,
+        VerificationState::Uncertain,
+    ] {
+        let json = serde_json::to_string(&vs).unwrap();
+        let de: VerificationState = serde_json::from_str(&json).unwrap();
+        assert_eq!(vs, de);
+    }
+    assert_eq!(
+        serde_json::to_string(&VerificationState::NotVerified).unwrap(),
+        "\"not_verified\""
+    );
+    assert_eq!(
+        serde_json::to_string(&VerificationState::Verifying).unwrap(),
+        "\"verifying\""
+    );
 }
 
 #[test]

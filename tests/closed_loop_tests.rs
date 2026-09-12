@@ -11,7 +11,7 @@
 use ai_agent_v3::{
     Action, ActionResult, ActionType, AgentDecision, AgentLoop, AgentState, CheckpointStore,
     ExecutionState, FakeRuntime, FinalTaskStatus, Goal, JsonFileCheckpointStore, LoopError,
-    LoopEvent, LoopStepOutcome, MockLlm, StateCheckpoint, ValidationError,
+    LoopEvent, LoopStepOutcome, MockLlm, StateCheckpoint, ValidationError, VerificationState,
 };
 use std::fs;
 
@@ -58,14 +58,54 @@ fn test_at_core_001_closed_loop_recovery_and_finish() {
 
     let mut agent_loop = AgentLoop::new(state);
 
-    // Execute closed loop to completion
-    let final_state = agent_loop
-        .run(&mut mock_llm, &mut runtime)
-        .expect("AgentLoop must complete without error");
+    // Step 1: Action A fails
+    let outcome = agent_loop
+        .step(&mut mock_llm, &mut runtime)
+        .expect("Action A step must succeed");
+    assert_eq!(outcome, LoopStepOutcome::Continue);
+
+    // Step 2: Action B succeeds — Action Success != Goal Success
+    let outcome = agent_loop
+        .step(&mut mock_llm, &mut runtime)
+        .expect("Action B step must succeed");
+    assert_eq!(outcome, LoopStepOutcome::Continue);
+    assert_eq!(
+        agent_loop.state().verification_state,
+        VerificationState::NotVerified
+    );
+
+    // Goal Verification using existing Observation / ActionResult as evidence
+    let success_obs = agent_loop
+        .state()
+        .recent_observations
+        .last()
+        .expect("Action B must produce an observation");
+    let evidence = format!(
+        "Original goal '{}': observation {} from action {:?} reports {}",
+        agent_loop.state().goal.description,
+        success_obs.id,
+        success_obs.source_action_id,
+        success_obs.summary
+    );
+    let _ = success_obs;
+    agent_loop.verify_goal(evidence);
+    assert_eq!(
+        agent_loop.state().verification_state,
+        VerificationState::Verified
+    );
+
+    // Step 3: Finish(Done) only after VerificationState = Verified
+    let outcome = agent_loop
+        .step(&mut mock_llm, &mut runtime)
+        .expect("Finish step must succeed");
+    assert_eq!(outcome, LoopStepOutcome::Finished(FinalTaskStatus::Done));
+
+    let final_state = agent_loop.state();
 
     // 1. Terminal task status must be Done
     assert_eq!(final_state.final_status, Some(FinalTaskStatus::Done));
     assert_eq!(final_state.execution_state, ExecutionState::Waiting);
+    assert_eq!(final_state.verification_state, VerificationState::Verified);
 
     // 2. Both actions were recorded in working memory in order
     assert_eq!(final_state.recent_actions.len(), 2);
@@ -92,9 +132,9 @@ fn test_at_core_001_closed_loop_recovery_and_finish() {
     assert_eq!(mock_llm.remaining(), 0);
     assert_eq!(mock_llm.call_count(), 3);
 
-    // 6. Verify Event Trace sequence
+    // 6. Verify Event Trace sequence includes explicit Goal Verification
     let events = agent_loop.trace().events();
-    assert_eq!(events.len(), 12);
+    assert_eq!(events.len(), 13);
     assert!(matches!(
         events[0],
         LoopEvent::DecisionProduced(AgentDecision::Act { .. })
@@ -111,12 +151,13 @@ fn test_at_core_001_closed_loop_recovery_and_finish() {
     assert!(matches!(events[7], LoopEvent::ActionResultReceived(ref r) if r.success));
     assert!(matches!(events[8], LoopEvent::ObservationProduced(_)));
     assert!(matches!(events[9], LoopEvent::StateUpdated));
+    assert!(matches!(events[10], LoopEvent::GoalVerified(_)));
     assert!(matches!(
-        events[10],
+        events[11],
         LoopEvent::DecisionProduced(AgentDecision::Finish { .. })
     ));
     assert!(matches!(
-        events[11],
+        events[12],
         LoopEvent::Finished(FinalTaskStatus::Done)
     ));
 }
@@ -229,6 +270,7 @@ fn test_agent_state_invariant_enforcement_in_loop() {
 
     // Stepping an already finalized loop must be rejected
     let mut valid_finished_state = AgentState::new(Goal::new("Already done"));
+    valid_finished_state.verify_goal("Verified: already-done fixture");
     valid_finished_state.finish(FinalTaskStatus::Done);
 
     let mut agent_loop = AgentLoop::new(valid_finished_state);
@@ -268,19 +310,36 @@ fn test_closed_loop_event_trace_determinism() {
         rt
     };
 
+    fn run_until_verified_done(
+        agent_loop: &mut AgentLoop,
+        mock: &mut MockLlm,
+        rt: &mut FakeRuntime,
+    ) {
+        // observe + two acts
+        for _ in 0..3 {
+            agent_loop.step(mock, rt).expect("scripted step");
+        }
+        assert_eq!(
+            agent_loop.state().verification_state,
+            VerificationState::NotVerified
+        );
+        agent_loop.verify_goal("Verified: deterministic evidence from observations");
+        agent_loop.run(mock, rt).expect("Finish after verification");
+    }
+
     // Run 1
     let state1 = AgentState::new(Goal::new("Deterministic test"));
     let mut mock1 = MockLlm::with_decisions(make_script());
     let mut rt1 = make_runtime();
     let mut loop1 = AgentLoop::new(state1);
-    loop1.run(&mut mock1, &mut rt1).expect("Run 1 failed");
+    run_until_verified_done(&mut loop1, &mut mock1, &mut rt1);
 
     // Run 2
     let state2 = AgentState::new(Goal::new("Deterministic test"));
     let mut mock2 = MockLlm::with_decisions(make_script());
     let mut rt2 = make_runtime();
     let mut loop2 = AgentLoop::new(state2);
-    loop2.run(&mut mock2, &mut rt2).expect("Run 2 failed");
+    run_until_verified_done(&mut loop2, &mut mock2, &mut rt2);
 
     // Assert absolute equivalence
     assert_eq!(
@@ -327,9 +386,15 @@ fn test_closed_loop_crash_and_resume_via_checkpoint() {
             .step(&mut mock, &mut runtime)
             .expect("Step 1 must succeed");
         assert_eq!(outcome, LoopStepOutcome::Continue);
+        assert_eq!(agent_loop.current_step(), 1);
+        assert_eq!(agent_loop.state().recent_observations[0].id, "obs-1");
 
-        // Save checkpoint before crash
-        let ckpt = StateCheckpoint::new("ckpt-step-1", 1, agent_loop.state().clone());
+        // Save checkpoint before crash, including execution cursor
+        let ckpt = StateCheckpoint::new(
+            "ckpt-step-1",
+            agent_loop.current_step() as u64,
+            agent_loop.state().clone(),
+        );
         store.save_checkpoint(&ckpt).expect("Save checkpoint");
 
         // Context 1 drops here (simulated process crash)
@@ -344,11 +409,14 @@ fn test_closed_loop_crash_and_resume_via_checkpoint() {
         assert_eq!(latest.step_index, 1);
         assert_eq!(latest.state.recent_actions.len(), 1);
         assert_eq!(latest.state.recent_actions[0].id, "step-1-act");
+        assert_eq!(latest.state.recent_observations[0].id, "obs-1");
         assert_eq!(latest.state.execution_state, ExecutionState::Running);
         assert_eq!(latest.state.final_status, None);
 
-        // Create new AgentLoop from restored state
-        let mut resumed_loop = AgentLoop::new(latest.state);
+        // Restore state AND execution cursor
+        let mut resumed_loop = AgentLoop::from_checkpoint(&latest);
+        assert_eq!(resumed_loop.current_step(), latest.step_index as usize);
+        assert_eq!(resumed_loop.current_step(), 1);
 
         // Script remaining work: Step 2 -> Finish
         let remaining_decisions = vec![
@@ -367,20 +435,62 @@ fn test_closed_loop_crash_and_resume_via_checkpoint() {
             ActionResult::success("step-2-act", "deployed successfully"),
         );
 
+        let outcome = resumed_loop
+            .step(&mut mock, &mut runtime)
+            .expect("Resumed action step must succeed");
+        assert_eq!(outcome, LoopStepOutcome::Continue);
+        assert_eq!(resumed_loop.current_step(), 2);
+
+        let resumed_obs_ids: Vec<&str> = resumed_loop
+            .state()
+            .recent_observations
+            .iter()
+            .map(|o| o.id.as_str())
+            .collect();
+        assert_eq!(resumed_obs_ids, vec!["obs-1", "obs-2"]);
+        assert_ne!(
+            resumed_loop.state().recent_observations[1].id,
+            resumed_loop.state().recent_observations[0].id,
+            "post-resume Observation IDs must not reuse crash-before IDs"
+        );
+
+        // Action success after resume is still not Goal Success
+        assert_eq!(
+            resumed_loop.state().verification_state,
+            VerificationState::NotVerified
+        );
+        let evidence_obs = resumed_loop
+            .state()
+            .recent_observations
+            .last()
+            .expect("resume observation")
+            .clone();
+        let goal_desc = resumed_loop.state().goal.description.clone();
+        resumed_loop.verify_goal(format!(
+            "Original goal '{}': observation {} reports {}",
+            goal_desc, evidence_obs.id, evidence_obs.summary
+        ));
+
         let final_state = resumed_loop
             .run(&mut mock, &mut runtime)
-            .expect("Resumed loop must finish");
+            .expect("Resumed loop must finish")
+            .clone();
 
         assert_eq!(final_state.final_status, Some(FinalTaskStatus::Done));
         assert_eq!(final_state.execution_state, ExecutionState::Waiting);
+        assert_eq!(final_state.verification_state, VerificationState::Verified);
         // Total actions across both sessions: 2
         assert_eq!(final_state.recent_actions.len(), 2);
         assert_eq!(final_state.recent_actions[0].id, "step-1-act");
         assert_eq!(final_state.recent_actions[1].id, "step-2-act");
         assert_eq!(mock.remaining(), 0);
 
-        // Save final checkpoint
-        let final_ckpt = StateCheckpoint::new("ckpt-step-2", 2, final_state.clone());
+        // Save final checkpoint — cursor read after run() completes (borrow fully released)
+        let final_ckpt = StateCheckpoint::new(
+            "ckpt-step-2",
+            resumed_loop.current_step() as u64,
+            final_state.clone(),
+        );
         store.save_checkpoint(&final_ckpt).expect("Save final ckpt");
     }
 
@@ -415,4 +525,119 @@ fn test_closed_loop_max_steps_safety_bound() {
     assert_eq!(err, Err(LoopError::MaxStepsExceeded(2)));
     assert_eq!(agent_loop.current_step(), 2);
     assert_eq!(agent_loop.state().recent_actions.len(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// Test 9: Action Success is not Goal Success — Finish(Done) rejected
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_action_success_without_goal_verification_cannot_finish_done() {
+    let goal = Goal::new("Create output.txt with expected checksum");
+    let state = AgentState::new(goal);
+
+    let decisions = vec![
+        AgentDecision::act(Action::new("act-ok", ActionType::Execute)),
+        AgentDecision::finish(FinalTaskStatus::Done),
+    ];
+    let mut mock = MockLlm::with_decisions(decisions);
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result("act-ok", ActionResult::success("act-ok", "exit 0"));
+
+    let mut agent_loop = AgentLoop::new(state);
+    agent_loop
+        .step(&mut mock, &mut runtime)
+        .expect("Action success is a valid loop step");
+
+    assert_eq!(
+        agent_loop.state().verification_state,
+        VerificationState::NotVerified
+    );
+    assert_eq!(agent_loop.state().recent_actions.len(), 1);
+
+    let err = agent_loop
+        .step(&mut mock, &mut runtime)
+        .expect_err("Done requires Goal Verification");
+    assert!(matches!(
+        err,
+        LoopError::UnverifiedGoal(VerificationState::NotVerified)
+    ));
+    assert_eq!(agent_loop.state().final_status, None);
+    assert_eq!(agent_loop.state().execution_state, ExecutionState::Running);
+}
+
+// ---------------------------------------------------------------------------
+// Test 10: Sufficient Goal Verification Evidence allows Done
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_goal_verification_evidence_allows_done() {
+    let goal = Goal::new("Create output.txt with expected checksum");
+    let state = AgentState::new(goal);
+
+    let decisions = vec![
+        AgentDecision::act(Action::new("act-ok", ActionType::Execute)),
+        AgentDecision::finish(FinalTaskStatus::Done),
+    ];
+    let mut mock = MockLlm::with_decisions(decisions);
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result(
+        "act-ok",
+        ActionResult::success("act-ok", "output.txt exists checksum=abc"),
+    );
+
+    let mut agent_loop = AgentLoop::new(state);
+    agent_loop
+        .step(&mut mock, &mut runtime)
+        .expect("Action success");
+
+    let obs = agent_loop.state().recent_observations[0].clone();
+    agent_loop.verify_goal(format!(
+        "Goal evidence from observation {}: {}",
+        obs.id, obs.summary
+    ));
+    assert_eq!(
+        agent_loop.state().verification_state,
+        VerificationState::Verified
+    );
+    assert!(!agent_loop.state().evidence.is_empty());
+
+    let outcome = agent_loop.step(&mut mock, &mut runtime).expect("Done");
+    assert_eq!(outcome, LoopStepOutcome::Finished(FinalTaskStatus::Done));
+    assert_eq!(agent_loop.state().final_status, Some(FinalTaskStatus::Done));
+    assert_eq!(agent_loop.state().execution_state, ExecutionState::Waiting);
+}
+
+// ---------------------------------------------------------------------------
+// Test 11: Non-Done terminals do not require Goal Verification
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_non_done_terminals_do_not_require_goal_verification() {
+    for status in [
+        FinalTaskStatus::Blocked {
+            reason: Some("policy".to_string()),
+        },
+        FinalTaskStatus::Impossible {
+            reason: Some("no compiler".to_string()),
+        },
+        FinalTaskStatus::NeedUser {
+            reason: Some("2FA".to_string()),
+        },
+    ] {
+        let mut mock = MockLlm::with_decisions(vec![AgentDecision::finish(status.clone())]);
+        let mut rt = FakeRuntime::new();
+        let mut agent_loop = AgentLoop::new(AgentState::new(Goal::new("terminal without verify")));
+        assert_eq!(
+            agent_loop.state().verification_state,
+            VerificationState::NotVerified
+        );
+        let final_state = agent_loop.run(&mut mock, &mut rt).expect("Must finish");
+        assert_eq!(final_state.final_status, Some(status));
+        assert_eq!(final_state.execution_state, ExecutionState::Waiting);
+        assert_eq!(
+            final_state.verification_state,
+            VerificationState::NotVerified
+        );
+    }
 }
