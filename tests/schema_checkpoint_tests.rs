@@ -1,5 +1,5 @@
 use ai_agent_v3::{
-    Action, ActionType, ActionResult, AgentDecision, AgentState, CheckpointStore, ExecutionState,
+    Action, ActionResult, ActionType, AgentDecision, AgentState, CheckpointStore, ExecutionState,
     FinalTaskStatus, Goal, JsonFileCheckpointStore, Observation, ObservationKind, StateCheckpoint,
     VerificationState,
 };
@@ -10,8 +10,12 @@ fn test_core_state_round_trip() {
     let goal = Goal::new("Repair build and pass tests");
     let mut state = AgentState::new(goal.clone());
     state.understanding = "Analyzing Cargo.toml dependency mismatch".to_string();
-    state.environment_state.insert("rustc_version".to_string(), "1.80.0".to_string());
-    state.active_problems.push("Cannot compile crate X".to_string());
+    state
+        .environment_state
+        .insert("rustc_version".to_string(), "1.80.0".to_string());
+    state
+        .active_problems
+        .push("Cannot compile crate X".to_string());
 
     let action = Action::new("act-1", ActionType::Execute)
         .with_parameter("cmd", "cargo check")
@@ -194,7 +198,9 @@ fn test_simulated_crash_and_context_restoration() {
 
         // Save checkpoint before simulated crash
         let ckpt = StateCheckpoint::new("ckpt-step-1", 1, state).with_timestamp(12345678);
-        store.save_checkpoint(&ckpt).expect("Save step 1 checkpoint");
+        store
+            .save_checkpoint(&ckpt)
+            .expect("Save step 1 checkpoint");
 
         // Context 1 drops here (simulating crash / memory loss)
     }
@@ -230,9 +236,10 @@ fn test_simulated_crash_and_context_restoration() {
         restored_state.final_status = Some(FinalTaskStatus::Done);
 
         // Save new checkpoint
-        let ckpt2 =
-            StateCheckpoint::new("ckpt-step-2", 2, restored_state).with_timestamp(12345679);
-        store.save_checkpoint(&ckpt2).expect("Save step 2 checkpoint");
+        let ckpt2 = StateCheckpoint::new("ckpt-step-2", 2, restored_state).with_timestamp(12345679);
+        store
+            .save_checkpoint(&ckpt2)
+            .expect("Save step 2 checkpoint");
 
         // Verify latest updated
         let latest_after_resume = store

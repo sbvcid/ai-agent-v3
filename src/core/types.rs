@@ -410,7 +410,10 @@ mod tests {
 
         assert_eq!(action.id, "act-1");
         assert_eq!(action.action_type, ActionType::Execute);
-        assert_eq!(action.parameters.get("cmd").map(|s| s.as_str()), Some("cargo test"));
+        assert_eq!(
+            action.parameters.get("cmd").map(|s| s.as_str()),
+            Some("cargo test")
+        );
         assert_eq!(action.intent.as_deref(), Some("Verify test suite"));
         assert!(action.validate().is_ok());
 
