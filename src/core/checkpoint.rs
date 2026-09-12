@@ -44,6 +44,9 @@ impl StateCheckpoint {
         if self.checkpoint_id.trim().is_empty() {
             return Err(ValidationError::EmptyField("checkpoint_id".to_string()));
         }
+        // Prevent path traversal: checkpoint_id is embedded in a filename, so
+        // it must contain only [A-Za-z0-9_-]. Enforced via path_safety module.
+        crate::runtime::path_safety::validate_checkpoint_id(&self.checkpoint_id)?;
         self.state.validate()?;
         Ok(())
     }

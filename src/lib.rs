@@ -3,6 +3,7 @@
 //! A Rust-based autonomous computer agent.
 
 pub mod core;
+pub mod runtime;
 
 pub use core::{
     Action, ActionResult, ActionType, AgentDecision, AgentLoop, AgentState, CheckpointError,
