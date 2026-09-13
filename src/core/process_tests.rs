@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use crate::core::ProcessSpec;
     use crate::core::types::{Action, ActionType};
+    use crate::core::ProcessSpec;
+    use std::collections::BTreeMap;
 
     #[test]
     fn test_valid_process_spec() {
@@ -45,7 +45,7 @@ mod tests {
         let mut action = Action::new("act-1", ActionType::Execute);
         action = action.with_parameter("executable", "git");
         action = action.with_parameter("args", r#"["status"]"#);
-        
+
         let spec = ProcessSpec::from_action(&action).unwrap();
         assert_eq!(spec.executable, "git");
         assert_eq!(spec.args, vec!["status"]);

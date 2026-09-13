@@ -1,5 +1,6 @@
 pub mod agent_loop;
 pub mod checkpoint;
+pub mod interpreter;
 pub mod process;
 #[cfg(test)]
 pub mod process_tests;
@@ -9,6 +10,7 @@ pub mod types;
 
 pub use agent_loop::{AgentLoop, EventTrace, LoopError, LoopEvent, LoopStepOutcome};
 pub use checkpoint::{CheckpointError, CheckpointStore, JsonFileCheckpointStore, StateCheckpoint};
+pub use interpreter::{interpret, InterpretationError};
 pub use process::ProcessSpec;
 pub use runtime::Runtime;
 pub use test_doubles::{FakeRuntime, MockLlm};
