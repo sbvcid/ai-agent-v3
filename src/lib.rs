@@ -11,10 +11,11 @@ pub use core::{
     CheckpointError, CheckpointStore, DecisionSource, DecisionSourceError, EventTrace,
     ExecutionState, FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal, InterpretationError,
     JsonFileCheckpointStore, KnowledgeState, LoopError, LoopEvent, LoopStepOutcome, MockLlm,
-    Observation, ObservationKind, ProcessSpec, ProviderDecisionSource, StateCheckpoint,
+    Observation, ObservationKind, ProcessSpec, ProviderDecisionSource, Runtime, StateCheckpoint,
     ValidationError, VerificationState,
 };
 pub use provider::{
     ollama::OllamaProvider, LlmProvider, ProviderError, ProviderMessage, ProviderRequest,
     ProviderResponse, ProviderToolCall,
 };
+pub use runtime::process_runtime::ProcessRuntime;
