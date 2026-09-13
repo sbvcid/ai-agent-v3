@@ -10,6 +10,7 @@
 pub mod filesystem_execute;
 pub mod filesystem_observe;
 pub mod path_safety;
+pub mod process_policy;
 pub mod process_runtime;
 
 pub use filesystem_execute::{append_to_file, create_directory, delete_path, write_file};

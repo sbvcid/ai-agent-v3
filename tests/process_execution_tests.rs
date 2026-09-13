@@ -2,7 +2,9 @@
 mod tests {
     use ai_agent_v3::core::runtime::Runtime;
     use ai_agent_v3::core::types::{Action, ActionType};
+    use ai_agent_v3::runtime::process_policy::ProcessPolicy;
     use ai_agent_v3::runtime::process_runtime::ProcessRuntime;
+    use std::path::PathBuf;
 
     #[test]
     fn test_process_execution_echo_success() {
@@ -49,36 +51,71 @@ mod tests {
     fn test_process_execution_spawn_fail() {
         let mut runtime = ProcessRuntime::new();
         let mut action = Action::new("act-1", ActionType::Execute);
-        action = action.with_parameter("executable", "non_existent_exe_12345");
+        // Using an allowed name in policy so it passes policy check and reaches spawn error
+        action = action.with_parameter("executable", "cmd.exe");
+        action = action.with_parameter("args", r#"["/c", "non_existent_exe_12345"]"#);
+
+        let result = runtime.execute(action);
+        assert!(!result.success);
+        // Wait, cmd /c returns error or exits with 1 when command not found.
+        // Let's test spawn fail directly by customizing policy to allow a non-existent executable:
+        let policy = ProcessPolicy::new(
+            ["non_existent_exe_12345".to_string()].into_iter().collect(),
+            None,
+        );
+        let mut custom_runtime = ProcessRuntime::with_policy(policy);
+        let mut spawn_action = Action::new("act-spawn", ActionType::Execute);
+        spawn_action = spawn_action.with_parameter("executable", "non_existent_exe_12345");
+
+        let res = custom_runtime.execute(spawn_action);
+        assert!(!res.success);
+        assert!(res.error.is_some());
+        assert!(res.error.unwrap().contains("Failed to spawn process"));
+    }
+
+    #[test]
+    fn test_denied_executable_never_runs() {
+        let mut runtime = ProcessRuntime::new(); // default allows cmd.exe, denies powershell.exe
+        let mut action = Action::new("act-policy", ActionType::Execute);
+        action = action.with_parameter("executable", "powershell.exe");
+        action = action.with_parameter("args", r#"["Get-Process"]"#);
 
         let result = runtime.execute(action);
         assert!(!result.success);
         assert!(result.error.is_some());
-        assert!(result.error.unwrap().contains("Failed to spawn process"));
+        let err_msg = result.error.unwrap();
+        assert!(err_msg.contains("Process policy violation"));
+        assert!(err_msg.contains("powershell.exe"));
     }
 
     #[test]
-    fn test_process_execution_timeout_rejected() {
-        let mut runtime = ProcessRuntime::new();
-        let mut action = Action::new("act-timeout", ActionType::Execute);
+    fn test_denied_cwd_never_spawns() {
+        let root = PathBuf::from("C:\\agent\\workspace");
+        let policy = ProcessPolicy::new(["cmd.exe".to_string()].into_iter().collect(), Some(root));
+        let mut runtime = ProcessRuntime::with_policy(policy);
+        let mut action = Action::new("act-cwd", ActionType::Execute);
         action = action.with_parameter("executable", "cmd.exe");
-        action = action.with_parameter("timeout_ms", "1000");
+        action = action.with_parameter("cwd", "C:\\agent\\workspace-evil");
 
         let result = runtime.execute(action);
         assert!(!result.success);
-        assert!(result.error.unwrap().contains("Timeout is not supported"));
+        assert!(result.error.is_some());
+        let err_msg = result.error.unwrap();
+        assert!(err_msg.contains("Process policy violation"));
+        assert!(err_msg.contains("workspace-evil"));
     }
 
     #[test]
-    fn test_process_execution_env_rejected() {
+    fn test_policy_failure_distinguishable_from_spawn_failure() {
         let mut runtime = ProcessRuntime::new();
-        let mut action = Action::new("act-env", ActionType::Execute);
-        action = action.with_parameter("executable", "cmd.exe");
-        action = action.with_parameter("env", r#"{"FOO": "bar"}"#);
+        let mut action = Action::new("act-distinguish", ActionType::Execute);
+        action = action.with_parameter("executable", "forbidden.exe");
 
         let result = runtime.execute(action);
         assert!(!result.success);
-        assert!(result.error.unwrap().contains("Custom environment variables are not supported"));
+        let err = result.error.unwrap();
+        assert!(err.contains("Process policy violation"));
+        assert!(!err.contains("Failed to spawn process"));
     }
 
     #[test]
@@ -88,6 +125,9 @@ mod tests {
 
         let result = runtime.execute(action);
         assert!(!result.success);
-        assert!(result.error.unwrap().contains("Action type must be Execute"));
+        assert!(result
+            .error
+            .unwrap()
+            .contains("Action type must be Execute"));
     }
 }

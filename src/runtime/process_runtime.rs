@@ -1,9 +1,12 @@
-use std::process::Command;
 use crate::core::process::ProcessSpec;
 use crate::core::runtime::Runtime;
 use crate::core::types::{Action, ActionResult, ActionType};
+use crate::runtime::process_policy::ProcessPolicy;
+use std::process::Command;
 
-pub struct ProcessRuntime;
+pub struct ProcessRuntime {
+    policy: ProcessPolicy,
+}
 
 impl Default for ProcessRuntime {
     fn default() -> Self {
@@ -13,7 +16,13 @@ impl Default for ProcessRuntime {
 
 impl ProcessRuntime {
     pub fn new() -> Self {
-        Self
+        Self {
+            policy: ProcessPolicy::default(),
+        }
+    }
+
+    pub fn with_policy(policy: ProcessPolicy) -> Self {
+        Self { policy }
     }
 }
 
@@ -34,16 +43,21 @@ impl Runtime for ProcessRuntime {
         };
 
         if spec.timeout_ms.is_some() {
-            return ActionResult::failure(
-                &action.id,
-                "Timeout is not supported in Stage 7B",
-            );
+            return ActionResult::failure(&action.id, "Timeout is not supported in Stage 7B");
         }
 
         if !spec.env.is_empty() {
             return ActionResult::failure(
                 &action.id,
                 "Custom environment variables are not supported in Stage 7B",
+            );
+        }
+
+        // Apply Process Policy check before spawning
+        if let Err(policy_err) = self.policy.check(&spec) {
+            return ActionResult::failure(
+                &action.id,
+                format!("Process policy violation: {}", policy_err),
             );
         }
 
