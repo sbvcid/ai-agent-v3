@@ -11,7 +11,8 @@
 //! The Fake Runtime accepts [`Action`] and returns scripted [`ActionResult`].
 
 use crate::core::runtime::Runtime;
-use crate::core::types::{Action, ActionResult, AgentDecision, FinalTaskStatus};
+use crate::core::types::{Action, ActionResult, AgentDecision, AgentState, FinalTaskStatus};
+use crate::core::{DecisionSource, DecisionSourceError};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -90,6 +91,12 @@ impl MockLlm {
     /// How many scripted decisions remain (not yet dispensed).
     pub fn remaining(&self) -> usize {
         self.decisions.len().saturating_sub(self.cursor)
+    }
+}
+
+impl DecisionSource for MockLlm {
+    fn next_decision(&mut self, _state: &AgentState) -> Result<AgentDecision, DecisionSourceError> {
+        Ok(self.next_decision())
     }
 }
 

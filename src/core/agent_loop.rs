@@ -27,8 +27,8 @@
 //! - Purely in-memory, deterministic, no OS or network side effects.
 
 use crate::core::checkpoint::StateCheckpoint;
+use crate::core::decision_source::{DecisionSource, DecisionSourceError};
 use crate::core::runtime::Runtime;
-use crate::core::test_doubles::MockLlm;
 use crate::core::types::{
     Action, ActionResult, AgentDecision, AgentState, ExecutionState, FinalTaskStatus, Observation,
     ObservationKind, ValidationError, VerificationState,
@@ -55,6 +55,9 @@ pub enum LoopError {
         "Cannot finish task as Done: Goal has not been verified (verification state is {0:?})"
     )]
     UnverifiedGoal(VerificationState),
+
+    #[error("Decision source error: {0}")]
+    DecisionSource(#[from] DecisionSourceError),
 }
 
 // ---------------------------------------------------------------------------
@@ -193,9 +196,9 @@ impl AgentLoop {
     }
 
     /// Execute a single step in the loop.
-    pub fn step<R: Runtime>(
+    pub fn step<DS: DecisionSource, R: Runtime>(
         &mut self,
-        llm: &mut MockLlm,
+        decision_source: &mut DS,
         runtime: &mut R,
     ) -> Result<LoopStepOutcome, LoopError> {
         // Prevent stepping if already finalized
@@ -210,8 +213,8 @@ impl AgentLoop {
 
         self.current_step += 1;
 
-        // 1. LLM Decision
-        let decision = llm.next_decision();
+        // 1. Decision acquisition via DecisionSource
+        let decision = decision_source.next_decision(&self.state)?;
         self.trace
             .push(LoopEvent::DecisionProduced(decision.clone()));
 
@@ -284,13 +287,13 @@ impl AgentLoop {
     }
 
     /// Run the loop to completion (until Finished, Waiting, or error).
-    pub fn run<R: Runtime>(
+    pub fn run<DS: DecisionSource, R: Runtime>(
         &mut self,
-        llm: &mut MockLlm,
+        decision_source: &mut DS,
         runtime: &mut R,
     ) -> Result<&AgentState, LoopError> {
         loop {
-            match self.step(llm, runtime)? {
+            match self.step(decision_source, runtime)? {
                 LoopStepOutcome::Continue => continue,
                 LoopStepOutcome::Waiting => break,
                 LoopStepOutcome::Finished(_) => break,
