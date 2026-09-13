@@ -9,9 +9,10 @@ pub mod runtime;
 pub use core::{
     interpret, Action, ActionResult, ActionType, AgentDecision, AgentLoop, AgentState,
     CheckpointError, CheckpointStore, DecisionSource, DecisionSourceError, EventTrace,
-    ExecutionState, FakeRuntime, FinalTaskStatus, Goal, InterpretationError,
+    ExecutionState, FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal, InterpretationError,
     JsonFileCheckpointStore, KnowledgeState, LoopError, LoopEvent, LoopStepOutcome, MockLlm,
-    Observation, ObservationKind, ProcessSpec, StateCheckpoint, ValidationError, VerificationState,
+    Observation, ObservationKind, ProcessSpec, ProviderDecisionSource, StateCheckpoint,
+    ValidationError, VerificationState,
 };
 pub use provider::{
     ollama::OllamaProvider, LlmProvider, ProviderError, ProviderMessage, ProviderRequest,

@@ -13,6 +13,7 @@
 use crate::core::runtime::Runtime;
 use crate::core::types::{Action, ActionResult, AgentDecision, AgentState, FinalTaskStatus};
 use crate::core::{DecisionSource, DecisionSourceError};
+use crate::provider::{LlmProvider, ProviderError, ProviderRequest, ProviderResponse};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
@@ -175,6 +176,68 @@ impl FakeRuntime {
     /// Return the number of actions recorded.
     pub fn action_count(&self) -> usize {
         self.recorded_actions.len()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fake LLM Provider
+// ---------------------------------------------------------------------------
+
+/// Deterministic fake LlmProvider for unit and integration testing.
+pub struct FakeLlmProvider {
+    responses: Vec<Result<ProviderResponse, ProviderError>>,
+    cursor: usize,
+    recorded_requests: Vec<ProviderRequest>,
+}
+
+impl Default for FakeLlmProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FakeLlmProvider {
+    pub fn new() -> Self {
+        Self {
+            responses: Vec::new(),
+            cursor: 0,
+            recorded_requests: Vec::new(),
+        }
+    }
+
+    pub fn with_responses(responses: Vec<Result<ProviderResponse, ProviderError>>) -> Self {
+        Self {
+            responses,
+            cursor: 0,
+            recorded_requests: Vec::new(),
+        }
+    }
+
+    pub fn push_response(&mut self, response: Result<ProviderResponse, ProviderError>) {
+        self.responses.push(response);
+    }
+
+    pub fn recorded_requests(&self) -> &[ProviderRequest] {
+        &self.recorded_requests
+    }
+
+    pub fn request_count(&self) -> usize {
+        self.recorded_requests.len()
+    }
+}
+
+impl LlmProvider for FakeLlmProvider {
+    fn chat(&mut self, request: &ProviderRequest) -> Result<ProviderResponse, ProviderError> {
+        self.recorded_requests.push(request.clone());
+        if self.cursor < self.responses.len() {
+            let res = self.responses[self.cursor].clone();
+            self.cursor += 1;
+            res
+        } else {
+            Err(ProviderError::Unavailable(
+                "FakeLlmProvider exhausted".to_string(),
+            ))
+        }
     }
 }
 
