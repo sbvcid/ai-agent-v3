@@ -5,6 +5,7 @@
 //! and implements [`OllamaProvider`] for Ollama's native `/api/chat` HTTP endpoint.
 
 pub mod ollama;
+pub mod decision_source;
 
 use serde::{Deserialize, Serialize};
 

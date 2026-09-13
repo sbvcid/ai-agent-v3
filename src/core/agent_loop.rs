@@ -3,21 +3,21 @@
 //! Provides a minimal, deterministic, purely in-memory Agent Loop that orchestrates:
 //! ```text
 //! AgentState
-//!     ↓
+//!     ??
 //! Mock LLM
-//!     ↓
+//!     ??
 //! AgentDecision
-//!     ↓
+//!     ??
 //! Action
-//!     ↓
+//!     ??
 //! Fake Runtime
-//!     ↓
+//!     ??
 //! ActionResult
-//!     ↓
+//!     ??
 //! Observation
-//!     ↓
+//!     ??
 //! AgentState update
-//!     ↓
+//!     ??
 //! next loop / Finish
 //! ```
 //!
@@ -28,6 +28,7 @@
 
 use crate::core::checkpoint::StateCheckpoint;
 use crate::core::runtime::Runtime;
+use crate::core::decision_source::DecisionSource;
 use crate::core::test_doubles::MockLlm;
 use crate::core::types::{
     Action, ActionResult, AgentDecision, AgentState, ExecutionState, FinalTaskStatus, Observation,
