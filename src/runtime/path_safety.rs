@@ -50,15 +50,58 @@ pub enum FilesystemError {
     #[error("Invalid path argument: {0}")]
     InvalidArgument(String),
 
+    /// The path does not exist.
+    #[error("Path not found: {0:?}")]
+    NotFound(PathBuf),
+
+    /// Permission denied.
+    #[error("Permission denied: {0:?}")]
+    PermissionDenied(PathBuf),
+
+    /// The path already exists.
+    #[error("Already exists: {0:?}")]
+    AlreadyExists(PathBuf),
+
+    /// Expected a directory, found a file.
+    #[error("Not a directory: {0:?}")]
+    NotADirectory(PathBuf),
+
+    /// Expected a file, found a directory.
+    #[error("Is a directory: {0:?}")]
+    IsDirectory(PathBuf),
+
     /// An I/O error occurred while canonicalizing an existing ancestor.
     /// Stored as a `String` so the type can remain `Clone + PartialEq`.
     #[error("I/O error during path resolution: {0}")]
     Io(String),
 }
 
+impl FilesystemError {
+    /// Helper to construct an Io error from a path and an OS error.
+    pub fn io(path: &Path, e: std::io::Error) -> Self {
+        match e.kind() {
+            std::io::ErrorKind::NotFound => FilesystemError::NotFound(path.to_path_buf()),
+            std::io::ErrorKind::PermissionDenied => {
+                FilesystemError::PermissionDenied(path.to_path_buf())
+            }
+            std::io::ErrorKind::AlreadyExists => FilesystemError::AlreadyExists(path.to_path_buf()),
+            _ => FilesystemError::Io(format!("{}: {}", path.display(), e)),
+        }
+    }
+}
+
 impl From<std::io::Error> for FilesystemError {
     fn from(e: std::io::Error) -> Self {
-        FilesystemError::Io(e.to_string())
+        match e.kind() {
+            std::io::ErrorKind::NotFound => FilesystemError::NotFound(PathBuf::from("<unknown>")),
+            std::io::ErrorKind::PermissionDenied => {
+                FilesystemError::PermissionDenied(PathBuf::from("<unknown>"))
+            }
+            std::io::ErrorKind::AlreadyExists => {
+                FilesystemError::AlreadyExists(PathBuf::from("<unknown>"))
+            }
+            _ => FilesystemError::Io(e.to_string()),
+        }
     }
 }
 

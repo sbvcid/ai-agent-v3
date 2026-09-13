@@ -219,8 +219,8 @@ mod tests {
         let err = read_file(&root, Path::new("does_not_exist.txt")).unwrap_err();
         // resolve_path succeeds (non-existing inside sandbox), but File::open fails.
         assert!(
-            matches!(err, FilesystemError::Io(_)),
-            "expected Io error, got: {:?}",
+            matches!(err, FilesystemError::NotFound(_)),
+            "expected NotFound error, got: {:?}",
             err
         );
     }
@@ -303,7 +303,11 @@ mod tests {
     fn list_missing_directory_returns_io_error() {
         let (_dir, root) = make_sandbox();
         let err = list_dir(&root, Path::new("no_such_dir")).unwrap_err();
-        assert!(matches!(err, FilesystemError::Io(_)), "got: {:?}", err);
+        assert!(
+            matches!(err, FilesystemError::NotFound(_)),
+            "got: {:?}",
+            err
+        );
     }
 
     // -----------------------------------------------------------------------
