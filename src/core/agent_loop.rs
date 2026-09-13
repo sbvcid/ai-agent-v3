@@ -27,7 +27,8 @@
 //! - Purely in-memory, deterministic, no OS or network side effects.
 
 use crate::core::checkpoint::StateCheckpoint;
-use crate::core::test_doubles::{FakeRuntime, MockLlm};
+use crate::core::runtime::Runtime;
+use crate::core::test_doubles::MockLlm;
 use crate::core::types::{
     Action, ActionResult, AgentDecision, AgentState, ExecutionState, FinalTaskStatus, Observation,
     ObservationKind, ValidationError, VerificationState,
@@ -192,10 +193,10 @@ impl AgentLoop {
     }
 
     /// Execute a single step in the loop.
-    pub fn step(
+    pub fn step<R: Runtime>(
         &mut self,
         llm: &mut MockLlm,
-        runtime: &mut FakeRuntime,
+        runtime: &mut R,
     ) -> Result<LoopStepOutcome, LoopError> {
         // Prevent stepping if already finalized
         if let Some(status) = &self.state.final_status {
@@ -283,10 +284,10 @@ impl AgentLoop {
     }
 
     /// Run the loop to completion (until Finished, Waiting, or error).
-    pub fn run(
+    pub fn run<R: Runtime>(
         &mut self,
         llm: &mut MockLlm,
-        runtime: &mut FakeRuntime,
+        runtime: &mut R,
     ) -> Result<&AgentState, LoopError> {
         loop {
             match self.step(llm, runtime)? {

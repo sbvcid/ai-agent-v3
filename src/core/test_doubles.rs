@@ -10,6 +10,7 @@
 //! The Mock LLM dispenses pre-queued [`AgentDecision`] values in FIFO order.
 //! The Fake Runtime accepts [`Action`] and returns scripted [`ActionResult`].
 
+use crate::core::runtime::Runtime;
 use crate::core::types::{Action, ActionResult, AgentDecision, FinalTaskStatus};
 use std::collections::HashMap;
 
@@ -115,6 +116,12 @@ impl Default for FakeRuntime {
     }
 }
 
+impl Runtime for FakeRuntime {
+    fn execute(&mut self, action: Action) -> ActionResult {
+        self.execute_internal(action)
+    }
+}
+
 impl FakeRuntime {
     /// Create a FakeRuntime with no scripted results.
     pub fn new() -> Self {
@@ -133,6 +140,10 @@ impl FakeRuntime {
     ///
     /// This method has NO real OS side effects.
     pub fn execute(&mut self, action: Action) -> ActionResult {
+        self.execute_internal(action)
+    }
+
+    fn execute_internal(&mut self, action: Action) -> ActionResult {
         self.recorded_actions.push(action.clone());
 
         if let Some(result) = self.scripted_results.get(&action.id) {
