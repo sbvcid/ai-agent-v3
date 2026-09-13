@@ -33,6 +33,20 @@ impl Runtime for ProcessRuntime {
             }
         };
 
+        if spec.timeout_ms.is_some() {
+            return ActionResult::failure(
+                &action.id,
+                "Timeout is not supported in Stage 7B",
+            );
+        }
+
+        if !spec.env.is_empty() {
+            return ActionResult::failure(
+                &action.id,
+                "Custom environment variables are not supported in Stage 7B",
+            );
+        }
+
         let mut command = Command::new(&spec.executable);
         command.args(&spec.args);
 
@@ -49,13 +63,9 @@ impl Runtime for ProcessRuntime {
                     action_id: action.id,
                     success,
                     exit_code,
-                    stdout: String::from_utf8(output.stdout).ok(),
-                    stderr: String::from_utf8(output.stderr).ok(),
-                    error: if success {
-                        None
-                    } else {
-                        Some("Process exited with non-zero status".to_string())
-                    },
+                    stdout: Some(String::from_utf8_lossy(&output.stdout).into_owned()),
+                    stderr: Some(String::from_utf8_lossy(&output.stderr).into_owned()),
+                    error: None,
                     output: None,
                     duration_ms: None,
                     affected_resources: Vec::new(),
