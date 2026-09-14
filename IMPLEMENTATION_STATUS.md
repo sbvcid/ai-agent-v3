@@ -4,11 +4,11 @@
 
 **Implementation Cycle 1: COMPLETED through Stage 9.4**
 
-The first implementation cycle established the canonical Agent Core domain model, deterministic closed loop, checkpoint persistence, Filesystem Runtime, Process Runtime, LLM Provider abstraction, Ollama Provider, provider decision interpretation, real-provider closed-loop integration, and the release gate.
+The first implementation cycle established the canonical Agent Core domain model, deterministic closed loop, checkpoint persistence, Filesystem Runtime foundation, Process Runtime foundation, LLM Provider abstraction, Ollama Provider, provider decision interpretation, real-provider closed-loop integration, and the release gate.
 
-The repository is now at the point where the next implementation increment must be selected from a formal gap analysis against the target specifications and the actual implementation on `master`.
+The repository is now in the design-and-selection phase for the first post-cycle Agent Core increment. No post-cycle implementation Stage has been approved or started.
 
-**Stage 10 is intentionally not defined.** No future stage should be inferred from this document.
+**Stage 10 is intentionally not defined.** No future stage should be inferred from this document or from the roadmap.
 
 ---
 
@@ -17,13 +17,13 @@ The repository is now at the point where the next implementation increment must 
 ```text
 Repository: sbvcid/ai-agent-v3
 Branch: master
-HEAD: b565f2a
-origin/master: b565f2a
+Repository HEAD: 56a493d
+Last implementation-code baseline: b565f2a
 ```
 
-The tracked repository baseline is synchronized at `b565f2a`.
+The repository HEAD has advanced beyond `b565f2a` through documentation-only commits. `b565f2a` remains the last implementation-code baseline from Cycle 1.
 
-Local untracked files, if present, are not part of this implementation baseline and must not be treated as project source unless explicitly added later.
+Local untracked files, if present, are not part of the implementation baseline and must not be treated as project source unless explicitly added later.
 
 ---
 
@@ -191,7 +191,7 @@ The Runtime must not become a hard-coded high-level workflow engine. The Agent C
 
 ## Formal Gap Analysis — Current Position
 
-A formal comparison against `docs/01_REQUIREMENTS.md` through `docs/05_TEST_PLAN.md` and the actual implementation has now been performed.
+A formal comparison against `docs/01_REQUIREMENTS.md` through `docs/05_TEST_PLAN.md` and the actual implementation has been performed. The detailed assessment is maintained in `docs/06_IMPLEMENTATION_GAP_ANALYSIS.md`.
 
 The key finding is that the current implementation is a **deterministic closed-loop skeleton**, not yet a fully adaptive Agent Core.
 
@@ -222,10 +222,10 @@ The key finding is that the current implementation is a **deterministic closed-l
 
 ### C. Missing Core Semantics
 
-These are the most important current gaps:
+The principal missing Agent Core semantics remain:
 
-- Observation Store with retrieval/query/filter semantics.
-- Context Compiler and explicit context-budget/relevance handling.
+- Observation Store with retrieval semantics.
+- Context Compiler and explicit bounded-context handling.
 - Evidence/knowledge lifecycle beyond simple storage fields.
 - Hypothesis lifecycle: create, support, contradict, revise, replace.
 - Progress detection.
@@ -237,7 +237,7 @@ These are the most important current gaps:
 
 ### D. Missing Runtime / Engineering Capabilities
 
-These remain future capability areas and should not be pulled forward merely to increase tool count:
+These remain future capability areas and are not automatically approved by their appearance here:
 
 - General Shell Runtime / interactive shell.
 - General Job management, cancellation, persistence and reconciliation.
@@ -248,65 +248,68 @@ These remain future capability areas and should not be pulled forward merely to 
 - Vision-assisted interaction.
 - Broader Network and advanced Windows capabilities.
 
-These are identified gaps, not an approved implementation sequence.
+These are identified gaps, not an implementation schedule.
 
 ---
 
-## Most Important Architectural Finding
+## Current Design Baseline
 
-The current implementation already has the basic execution loop:
+The first post-cycle Agent Core design baseline is:
 
-```text
-Decision → Action → Runtime → ActionResult → Observation → State → Decision
-```
+`docs/07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md`
 
-The missing semantic layer is:
-
-```text
-Observation
-    ↓
-Evidence / Knowledge
-    ↓
-Hypothesis / Problem State
-    ↓
-Progress Evaluation
-    ↓
-Loop Detection / Strategy Revision
-    ↓
-Relevant Context
-    ↓
-Next Decision
-```
-
-Therefore the next increment should strengthen Agent Core semantics and the Observation/Context boundary before broad Runtime tool expansion.
-
-Adding more tools before this layer exists would risk turning the system into `LLM + more tools + implicit fixed workflow`, which conflicts with the target architecture.
-
----
-
-## Dependency Direction for the Next Increment
-
-The current gap dependency is approximately:
+Its scope is intentionally limited to:
 
 ```text
 Observation Store
         ↓
 Context Compiler
         ↓
-Evidence / Hypothesis Semantics
-        ↓
-Progress + Loop Detection
-        ↓
-Adaptive Agent Loop
-        ↓
-Stronger Goal Verification
-        ↓
-Runtime / Engineering Capability Expansion
+Provider-facing semantic context
 ```
 
-This is a dependency analysis, not yet an implementation schedule.
+It establishes:
 
-The exact first increment must be selected after the dedicated design document is reviewed.
+- authoritative in-process observation history;
+- bounded context as a separate representation;
+- deterministic context compilation;
+- explicit ownership boundaries;
+- checkpoint compatibility rules;
+- deterministic test requirements.
+
+It does **not** authorize implementation by itself and does not define a numbered Stage.
+
+The broader dependency roadmap is maintained in:
+
+`docs/08_AGENT_CORE_ROADMAP.md`
+
+The roadmap is a dependency map, not a mandatory linear schedule.
+
+---
+
+## Dependency Direction
+
+The current dependency assessment is approximately:
+
+```text
+Observation History
+        ↓
+Context Compilation
+        ↓
+Evidence / Knowledge
+        ↓
+Hypothesis / Problem Semantics
+        ↓
+Progress / Loop Awareness
+        ↓
+Adaptive Recovery
+        ↓
+Stronger Goal Verification
+```
+
+Runtime capability branches such as Jobs, environment discovery, Engineering Runtime, Browser, GUI, and Vision have additional dependencies and are not required to follow this exact sequence.
+
+This is architecture guidance, not a task queue.
 
 ---
 
@@ -368,7 +371,7 @@ AGENTS.md
     Coding-Agent rules and architectural constraints.
 
 DEVELOPMENT_WORKFLOW.md
-    Development workflow.
+    Development workflow, verification, interruption and recovery.
 
 docs/01_REQUIREMENTS.md
     Required system behavior / target capabilities.
@@ -388,14 +391,22 @@ docs/05_TEST_PLAN.md
 docs/06_IMPLEMENTATION_GAP_ANALYSIS.md
     Current formal gap analysis and dependency assessment.
 
+docs/07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md
+    Stable design baseline for the first post-cycle Agent Core increment.
+
+docs/08_AGENT_CORE_ROADMAP.md
+    Stable long-term dependency and capability roadmap.
+
 IMPLEMENTATION_STATUS.md
-    Current implementation reality / repository baseline.
+    Current implementation reality, verification evidence, and active status.
 
 history/
     Historical records only.
 ```
 
-Formal specifications describe the target system. `IMPLEMENTATION_STATUS.md` describes implementation reality. The gap-analysis document describes the current comparison and must not silently redefine the formal requirements.
+The permanent design documents should change only when the target architecture, formal requirements, or long-term dependency understanding materially changes. Temporary implementation instructions, debugging notes, and active coding prompts belong in the development conversation or status/history records as appropriate.
+
+Formal specifications describe the target system. Design documents describe stable architectural decisions. `IMPLEMENTATION_STATUS.md` describes implementation reality. The gap-analysis document compares reality against the formal target and must not silently redefine the requirements.
 
 ---
 
@@ -403,21 +414,11 @@ Formal specifications describe the target system. `IMPLEMENTATION_STATUS.md` des
 
 No Stage 10 is defined.
 
-The next work item is **not code implementation yet**. It is to finalize the first post-cycle design increment using the formal gap analysis.
+The current work is documentation/design stabilization, not source-code implementation.
 
-The next design document should define:
+When the user approves implementation of a specific post-cycle increment, the implementation prompt will be generated in the active conversation from the approved design baseline. No permanent `09_IMPLEMENTATION_TASK` document is required.
 
-- the exact first increment scope;
-- semantic responsibilities and boundaries;
-- minimal interfaces/data structures;
-- invariants;
-- deterministic tests;
-- acceptance coverage;
-- migration impact on existing modules;
-- explicit non-goals;
-- implementation/review gate.
-
-Only after that design is reviewed should a Coding Agent receive an implementation task.
+Until such approval, the coding agent must not infer a Stage or implement roadmap items merely because they are documented.
 
 ---
 
