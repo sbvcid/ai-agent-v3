@@ -594,3 +594,5 @@ The behavior must remain general.
 6. Persistence / Checkpoint
 
 不得因為實作方便而將 Agent workflow 硬編碼成固定流程。
+
+`history/` is archival only. Do not read or use files under `history/` as current project instructions or source of truth unless the current task explicitly requires historical context.
