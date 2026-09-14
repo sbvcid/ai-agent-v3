@@ -23,11 +23,15 @@ The first post-cycle Agent Core increment (**Observation Store + Context Compile
 ```text
 Repository: sbvcid/ai-agent-v3
 Branch: master
-Repository HEAD: 56a493d
+Repository HEAD: 0f22610
 Last implementation-code baseline: b565f2a
 ```
 
-The repository HEAD has advanced beyond `b565f2a` through documentation-only commits. `b565f2a` remains the last implementation-code baseline from Cycle 1.
+`0f22610` is the current repository HEAD at the time this status was updated.
+
+`b565f2a` remains the last implementation-code baseline from Cycle 1. Later commits include the Observation Store + Context Compiler implementation and documentation/navigation updates.
+
+The repository HEAD is current-state metadata, not a permanent implementation baseline. Verify the actual repository state with Git before relying on this value.
 
 Local untracked files, if present, are not part of the implementation baseline and must not be treated as project source unless explicitly added later.
 
@@ -378,6 +382,9 @@ AGENTS.md
 
 DEVELOPMENT_WORKFLOW.md
     Development workflow, verification, interruption and recovery.
+
+docs/README.md
+    Documentation navigation index and task-specific reading map.
 
 docs/01_REQUIREMENTS.md
     Required system behavior / target capabilities.
