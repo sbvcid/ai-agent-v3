@@ -9,10 +9,11 @@
 ```text
 Implementation Cycle 1: COMPLETED through Stage 9.4
 Post-Cycle Increment: Observation Store + Context Compiler — COMPLETED
-Current overall state: deterministic closed-loop foundation + first Agent Core observation/context foundation
+B1 — Knowledge Semantic Foundation: IMPLEMENTED, LOCAL VERIFICATION PENDING
+Current overall state: deterministic closed-loop foundation + observation/context foundation + first Evidence/Knowledge semantic foundation
 ```
 
-**Stage 10 尚未定義。** 不得從本文件、README、文件編號或 roadmap 自行推導下一個 Stage。
+**Stage 10 尚未定義。** B1 是經批准的 Agent Core semantic implementation increment，不自動建立 Stage 10。
 
 目前 repository 的真實狀態仍必須以 source code、tests 與實際驗證結果確認。
 
@@ -21,8 +22,8 @@ Current overall state: deterministic closed-loop foundation + first Agent Core o
 ```text
 Repository: sbvcid/ai-agent-v3
 Branch: master
-Last synchronized documentation checkpoint: 0402926
-Last implementation-code baseline from Cycle 1: b565f2a
+Latest documentation checkpoint: b8ada04
+Latest B1 implementation commit: 6f86cdce
 ```
 
 以上 commit 是狀態導航資訊，不是永久真相。新的 AI session 必須先執行：
@@ -222,7 +223,78 @@ git diff --check
 
 並完成對應 closed-loop integration verification。實際 test count 應以目前 repository 執行結果為準，不應依賴舊 session 的數字。
 
-## 5. Current Architecture Boundary
+## 5. B1 — Knowledge Semantic Foundation
+
+**IMPLEMENTED — LOCAL VERIFICATION PENDING**
+
+本 increment 依 `docs/09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md` 實作，範圍固定為 Evidence / Knowledge semantic foundation。
+
+已加入：
+
+```text
+KnowledgeClaim
+    id / subject / predicate / value / status / scope / evidence_refs
+
+KnowledgeClaimStatus
+    Observed / Inferred / Hypothesis
+
+EvidenceLink
+    observation_id / claim_id / relation
+
+EvidenceRelation
+    Supports / Contradicts / Qualifies
+
+Unknown
+    id / subject / scope / question
+
+KnowledgeStore
+InMemoryKnowledgeStore
+KnowledgeStoreError
+```
+
+已建立的 boundary：
+
+```text
+ObservationStore
+    = authoritative observation history
+
+KnowledgeStore
+    = derived Knowledge / Evidence / Unknown state
+
+EvidenceLink
+    = references ObservationStore by stable observation ID
+
+ContextCompiler
+    = can consume KnowledgeClaim / EvidenceLink / Unknown deterministically
+```
+
+重要限制：
+
+- 不新增 `AgentDecision::UpdateKnowledge`。
+- 不加入 confidence / probability / truth score。
+- 不自動解決 conflicting claims。
+- 不複製 Observation history。
+- 不引入 SQLite、RAG、vector DB 或外部 Knowledge persistence。
+- 不修改 Runtime 成為 Knowledge engine。
+- `Observed` / `Inferred` claim 必須透過 atomic `record_claim_with_evidence` 建立 provenance。
+- `Hypothesis` 可以沒有 evidence support，但不得被表示為 Observed / Inferred。
+- EvidenceLink duplicate deterministic reject。
+
+### B1 驗證狀態
+
+程式碼與 deterministic unit tests 已加入 repository，但本 session 尚未在使用者本機執行：
+
+```text
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo check
+cargo test
+git diff --check
+```
+
+因此在本機驗證完成前，不將 B1 標記為 VERIFIED / RELEASED。
+
+## 6. Current Architecture Boundary
 
 目前高層資料流：
 
@@ -233,7 +305,9 @@ Agent Core
     ↕
 Agent State
     ↕
-Observation / semantic state
+Observation Store
+    ↕
+Knowledge Store
     ↓
 Context Compiler
     ↓
@@ -256,13 +330,16 @@ Agent Core
 
 ```text
 Agent Core
-= state / decision / adaptation / verification
+= state / decision / adaptation / verification / semantic state
 
 Runtime
 = computer-operation capability
 
-Observation
-= environmental evidence
+Observation Store
+= authoritative historical evidence
+
+Knowledge Store
+= derived Knowledge / Evidence / Unknown semantic state
 
 Context Compiler
 = deterministic semantic context construction
@@ -277,14 +354,13 @@ Agent Core 不得依賴 Windows-specific implementation details。
 
 Provider 必須保持可替換。
 
-## 6. Remaining Long-Term Work
+## 7. Remaining Long-Term Work
 
-以下代表 **尚未完整實作的長期能力**，不是說第一版 Observation Store / Context Compiler 尚未存在：
+以下代表 **尚未完整實作的長期能力**，不是說第一版 Observation Store / Context Compiler / B1 foundation 不存在：
 
 ### Agent Core semantic direction
 
 - richer Observation semantics
-- Evidence / Knowledge semantics
 - Hypothesis lifecycle
 - Progress detection
 - Loop detection
@@ -303,7 +379,7 @@ Provider 必須保持可替換。
 
 這些項目不能自行變成新的 implementation Stage。是否進入 implementation，必須先有適用的 stable design、scope、non-goals、acceptance criteria、dependency understanding 與使用者批准。
 
-## 7. Known Documentation Rule
+## 8. Known Documentation Rule
 
 本 repository 對新 AI 的 startup reading 已固定為：
 
@@ -325,26 +401,18 @@ Stable design inventory 與 task-specific reading rules 的唯一導航來源是
 docs/README.md
 ```
 
-## 8. Current Next Step
+## 9. Current Next Step
 
-**沒有自動產生的下一個 implementation Stage。**
+B1 完成後不自動進入下一個 increment。
 
-下一次 implementation 工作必須在當次工作中明確確認：
+目前唯一待辦是完成本機驗證並確認：
 
 ```text
-目前 current state
-        ↓
-適用 stable design
-        ↓
-dependencies
-        ↓
-scope / non-goals
-        ↓
-acceptance criteria
-        ↓
-user approval
-        ↓
-one implementation increment
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo check
+cargo test
+git diff --check
 ```
 
-完成後 STOP，等待下一個明確指令。
+驗證通過後 STOP，等待下一個明確指令。
