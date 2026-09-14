@@ -358,9 +358,9 @@ mod tests {
 
     #[test]
     fn test_provider_decision_source_provider_failure() {
-        let provider = FakeLlmProvider::with_responses(vec![Err(
-            ProviderError::Unavailable("Ollama down".to_string()),
-        )]);
+        let provider = FakeLlmProvider::with_responses(vec![Err(ProviderError::Unavailable(
+            "Ollama down".to_string(),
+        ))]);
         let mut source = ProviderDecisionSource::new(provider);
         let state = AgentState::new(Goal::new("Fail test"));
 

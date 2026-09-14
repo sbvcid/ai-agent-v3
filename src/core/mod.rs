@@ -20,8 +20,8 @@ pub use context_compiler::{
 pub use decision_source::{DecisionSource, DecisionSourceError, ProviderDecisionSource};
 pub use interpreter::{interpret, InterpretationError};
 pub use knowledge_store::{
-    EvidenceLink, EvidenceRelation, InMemoryKnowledgeStore, KnowledgeClaim,
-    KnowledgeClaimStatus, KnowledgeStore, KnowledgeStoreError, Unknown,
+    EvidenceLink, EvidenceRelation, InMemoryKnowledgeStore, KnowledgeClaim, KnowledgeClaimStatus,
+    KnowledgeStore, KnowledgeStoreError, Unknown,
 };
 pub use observation_store::{InMemoryObservationStore, ObservationStore, ObservationStoreError};
 pub use process::ProcessSpec;

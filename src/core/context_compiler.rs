@@ -226,7 +226,11 @@ mod tests {
         let state = AgentState::new(goal);
         let mut observations = InMemoryObservationStore::new();
         observations
-            .record(Observation::new("obs-1", ObservationKind::Environment, "port open"))
+            .record(Observation::new(
+                "obs-1",
+                ObservationKind::Environment,
+                "port open",
+            ))
             .unwrap();
 
         let mut knowledge = InMemoryKnowledgeStore::new();

@@ -126,38 +126,58 @@ impl InMemoryKnowledgeStore {
 
     fn validate_claim(claim: &KnowledgeClaim) -> Result<(), KnowledgeStoreError> {
         if claim.id.trim().is_empty() {
-            return Err(KnowledgeStoreError::Validation("claim id cannot be empty".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "claim id cannot be empty".into(),
+            ));
         }
         if claim.subject.trim().is_empty() {
-            return Err(KnowledgeStoreError::Validation("claim subject cannot be empty".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "claim subject cannot be empty".into(),
+            ));
         }
         if claim.predicate.trim().is_empty() {
-            return Err(KnowledgeStoreError::Validation("claim predicate cannot be empty".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "claim predicate cannot be empty".into(),
+            ));
         }
         if claim.value.trim().is_empty() {
-            return Err(KnowledgeStoreError::Validation("claim value cannot be empty".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "claim value cannot be empty".into(),
+            ));
         }
         if claim.scope.trim().is_empty() {
-            return Err(KnowledgeStoreError::Validation("claim scope cannot be empty".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "claim scope cannot be empty".into(),
+            ));
         }
         if claim.evidence_refs.iter().any(|id| id.trim().is_empty()) {
-            return Err(KnowledgeStoreError::Validation("claim evidence_refs cannot contain empty IDs".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "claim evidence_refs cannot contain empty IDs".into(),
+            ));
         }
         Ok(())
     }
 
     fn validate_unknown(unknown: &Unknown) -> Result<(), KnowledgeStoreError> {
         if unknown.id.trim().is_empty() {
-            return Err(KnowledgeStoreError::Validation("unknown id cannot be empty".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "unknown id cannot be empty".into(),
+            ));
         }
         if unknown.subject.trim().is_empty() {
-            return Err(KnowledgeStoreError::Validation("unknown subject cannot be empty".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "unknown subject cannot be empty".into(),
+            ));
         }
         if unknown.scope.trim().is_empty() {
-            return Err(KnowledgeStoreError::Validation("unknown scope cannot be empty".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "unknown scope cannot be empty".into(),
+            ));
         }
         if unknown.question.trim().is_empty() {
-            return Err(KnowledgeStoreError::Validation("unknown question cannot be empty".into()));
+            return Err(KnowledgeStoreError::Validation(
+                "unknown question cannot be empty".into(),
+            ));
         }
         Ok(())
     }
@@ -174,7 +194,9 @@ impl InMemoryKnowledgeStore {
                 ));
             }
             if observations.get(&link.observation_id).is_none() {
-                return Err(KnowledgeStoreError::MissingObservation(link.observation_id.clone()));
+                return Err(KnowledgeStoreError::MissingObservation(
+                    link.observation_id.clone(),
+                ));
             }
             if self.get_claim(&link.claim_id).is_some() {
                 // The caller may be updating an existing claim only through a future
@@ -204,14 +226,19 @@ impl KnowledgeStore for InMemoryKnowledgeStore {
         if self.get_claim(&claim.id).is_some() {
             return Err(KnowledgeStoreError::DuplicateClaimId(claim.id));
         }
-        if matches!(claim.status, KnowledgeClaimStatus::Observed | KnowledgeClaimStatus::Inferred) {
+        if matches!(
+            claim.status,
+            KnowledgeClaimStatus::Observed | KnowledgeClaimStatus::Inferred
+        ) {
             return Err(KnowledgeStoreError::Validation(
                 "Observed/Inferred claims require atomic record_claim_with_evidence".into(),
             ));
         }
         for observation_id in &claim.evidence_refs {
             if observations.get(observation_id).is_none() {
-                return Err(KnowledgeStoreError::MissingObservation(observation_id.clone()));
+                return Err(KnowledgeStoreError::MissingObservation(
+                    observation_id.clone(),
+                ));
             }
         }
         self.claims.push(claim);
@@ -228,7 +255,10 @@ impl KnowledgeStore for InMemoryKnowledgeStore {
         if self.get_claim(&claim.id).is_some() {
             return Err(KnowledgeStoreError::DuplicateClaimId(claim.id));
         }
-        if !matches!(claim.status, KnowledgeClaimStatus::Observed | KnowledgeClaimStatus::Inferred) {
+        if !matches!(
+            claim.status,
+            KnowledgeClaimStatus::Observed | KnowledgeClaimStatus::Inferred
+        ) {
             return Err(KnowledgeStoreError::Validation(
                 "record_claim_with_evidence is only for Observed/Inferred claims".into(),
             ));
@@ -245,7 +275,9 @@ impl KnowledgeStore for InMemoryKnowledgeStore {
         }
         for observation_id in &claim.evidence_refs {
             if observations.get(observation_id).is_none() {
-                return Err(KnowledgeStoreError::MissingObservation(observation_id.clone()));
+                return Err(KnowledgeStoreError::MissingObservation(
+                    observation_id.clone(),
+                ));
             }
         }
         if evidence.iter().any(|link| link.claim_id != claim.id) {
@@ -303,7 +335,11 @@ impl KnowledgeStore for InMemoryKnowledgeStore {
 
     fn record_unknown(&mut self, unknown: Unknown) -> Result<(), KnowledgeStoreError> {
         Self::validate_unknown(&unknown)?;
-        if self.unknowns.iter().any(|existing| existing.id == unknown.id) {
+        if self
+            .unknowns
+            .iter()
+            .any(|existing| existing.id == unknown.id)
+        {
             return Err(KnowledgeStoreError::DuplicateUnknownId(unknown.id));
         }
         self.unknowns.push(unknown);
@@ -339,11 +375,15 @@ impl KnowledgeStore for InMemoryKnowledgeStore {
             Self::validate_claim(claim)?;
             for observation_id in &claim.evidence_refs {
                 if observations.get(observation_id).is_none() {
-                    return Err(KnowledgeStoreError::MissingObservation(observation_id.clone()));
+                    return Err(KnowledgeStoreError::MissingObservation(
+                        observation_id.clone(),
+                    ));
                 }
             }
-            if matches!(claim.status, KnowledgeClaimStatus::Observed | KnowledgeClaimStatus::Inferred)
-                && !self.evidence.iter().any(|link| link.claim_id == claim.id)
+            if matches!(
+                claim.status,
+                KnowledgeClaimStatus::Observed | KnowledgeClaimStatus::Inferred
+            ) && !self.evidence.iter().any(|link| link.claim_id == claim.id)
             {
                 return Err(KnowledgeStoreError::Validation(format!(
                     "{} claim must have at least one evidence link",
@@ -357,7 +397,9 @@ impl KnowledgeStore for InMemoryKnowledgeStore {
         }
         for link in &self.evidence {
             if observations.get(&link.observation_id).is_none() {
-                return Err(KnowledgeStoreError::MissingObservation(link.observation_id.clone()));
+                return Err(KnowledgeStoreError::MissingObservation(
+                    link.observation_id.clone(),
+                ));
             }
             if self.get_claim(&link.claim_id).is_none() {
                 return Err(KnowledgeStoreError::MissingClaim(link.claim_id.clone()));
@@ -379,10 +421,18 @@ mod tests {
     fn observation_store() -> InMemoryObservationStore {
         let mut store = InMemoryObservationStore::new();
         store
-            .record(Observation::new("obs-1", ObservationKind::Environment, "port 8080 is open"))
+            .record(Observation::new(
+                "obs-1",
+                ObservationKind::Environment,
+                "port 8080 is open",
+            ))
             .unwrap();
         store
-            .record(Observation::new("obs-2", ObservationKind::Environment, "port 8080 is closed"))
+            .record(Observation::new(
+                "obs-2",
+                ObservationKind::Environment,
+                "port 8080 is closed",
+            ))
             .unwrap();
         store
     }
@@ -459,7 +509,10 @@ mod tests {
                 &observations,
             )
             .unwrap_err();
-        assert!(matches!(err, KnowledgeStoreError::DuplicateEvidenceLink { .. }));
+        assert!(matches!(
+            err,
+            KnowledgeStoreError::DuplicateEvidenceLink { .. }
+        ));
     }
 
     #[test]

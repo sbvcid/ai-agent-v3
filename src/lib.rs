@@ -9,8 +9,8 @@ pub mod runtime;
 pub use core::{
     interpret, Action, ActionResult, ActionType, AgentDecision, AgentLoop, AgentState,
     CheckpointError, CheckpointStore, CompiledContext, ContextCompileError, ContextCompiler,
-    DecisionSource, DecisionSourceError, DefaultContextCompiler, EventTrace, ExecutionState,
-    EvidenceLink, EvidenceRelation, FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal,
+    DecisionSource, DecisionSourceError, DefaultContextCompiler, EventTrace, EvidenceLink,
+    EvidenceRelation, ExecutionState, FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal,
     InMemoryKnowledgeStore, InMemoryObservationStore, InterpretationError, JsonFileCheckpointStore,
     KnowledgeClaim, KnowledgeClaimStatus, KnowledgeState, KnowledgeStore, KnowledgeStoreError,
     LoopError, LoopEvent, LoopStepOutcome, MockLlm, Observation, ObservationKind, ObservationStore,
