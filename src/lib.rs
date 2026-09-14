@@ -13,8 +13,9 @@ pub use core::{
     EvidenceRelation, ExecutionState, FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal,
     InMemoryKnowledgeStore, InMemoryObservationStore, InterpretationError, JsonFileCheckpointStore,
     KnowledgeClaim, KnowledgeClaimStatus, KnowledgeState, KnowledgeStore, KnowledgeStoreError,
-    LoopError, LoopEvent, LoopStepOutcome, MockLlm, Observation, ObservationKind, ObservationStore,
-    ObservationStoreError, ProcessSpec, ProviderDecisionSource, Runtime, StateCheckpoint, Unknown,
+    KnowledgeStoreSemanticUpdater, LoopError, LoopEvent, LoopStepOutcome, MockLlm, Observation,
+    ObservationKind, ObservationStore, ObservationStoreError, ProcessSpec, ProviderDecisionSource,
+    Runtime, SemanticUpdate, SemanticUpdateError, SemanticUpdater, StateCheckpoint, Unknown,
     ValidationError, VerificationState,
 };
 pub use provider::{
