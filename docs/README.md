@@ -80,7 +80,7 @@ README.md
 docs/README.md
 → stable docs 的唯一導航入口
 
-docs/01~10
+docs/01~11
 → 目前治理基線中的 stable requirements / design / interface / acceptance / test / roadmap / approved implementation increment design
 
 history/
@@ -110,12 +110,15 @@ active conversation
 | `08_AGENT_CORE_ROADMAP.md` | Agent Core 長期能力與依賴方向 | 判斷長期依賴與能力方向時 |
 | `09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md` | Evidence / Knowledge / Unknown semantic foundation | 涉及 Evidence / Knowledge / Unknown 時 |
 | `10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` | B2 Knowledge Context Integration 的 implementation boundary、sub-increments 與 acceptance criteria | 實作 B2-A/B/C 或驗證 B2 data path 時 |
+| `11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` | B2-C Semantic Update / Closed-Loop Integration 的 implementation boundary、ownership、closed-loop tests 與 release gate | 實作或驗證 B2-C 時 |
 
 以上是目前治理基線中的 stable-document baseline，不是永久且封閉的文件全集。
 
 `09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md` 現已正式建立並標記為 **APPROVED STABLE DESIGN**。它定義 Evidence / Knowledge / Unknown 的第一版 semantic boundary；它不是 implementation task，也不自動建立下一個 implementation Stage。
 
 `10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` 現已正式建立並標記為 **APPROVED STABLE DESIGN**。它只定義 B2 implementation boundary；B2-A、B2-B、B2-C 仍須各自取得使用者明確批准後才能實作，不自動建立 Stage 10。
+
+`11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` 現已建立為 **DRAFT — AWAITING EXPLICIT APPROVAL**。它只定義 B2-C Semantic Update / Closed-Loop Integration 的 implementation boundary；它不代表 B2-C 已獲准實作，也不自動建立新的 Stage。
 
 未來正式建立新的 stable document 時，必須同時：
 
@@ -240,6 +243,33 @@ failing test
 再讀 B2 當前 sub-increment 的 direct source/tests。
 
 B2-A、B2-B、B2-C 必須依序單獨批准與驗證；不得把本文件視為一次性授權全部 B2 程式碼實作。
+
+### B2-C Semantic Update / Closed-Loop Integration
+
+讀：
+
+```text
+03_INTERFACES.md
+06_IMPLEMENTATION_GAP_ANALYSIS.md
+09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md
+10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md
+11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md
+```
+
+再讀：
+
+```text
+src/core/agent_loop.rs
+src/core/knowledge_store.rs
+src/core/observation_store.rs
+src/core/context_compiler.rs
+src/core/decision_source.rs
+src/core/types.rs
+```
+
+以及直接相關 tests。
+
+`11` 在取得明確批准前只是一份 draft specification；不得將其視為實作授權。
 
 ### 修改 Runtime Capability
 
