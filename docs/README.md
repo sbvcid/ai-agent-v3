@@ -80,7 +80,7 @@ README.md
 docs/README.md
 → stable docs 的唯一導航入口
 
-docs/01~08
+docs/01~09
 → 目前治理基線中的 stable requirements / design / interface / acceptance / test / roadmap
 
 history/
@@ -108,14 +108,13 @@ active conversation
 | `06_IMPLEMENTATION_GAP_ANALYSIS.md` | Target Design 與 Current Implementation 的差距 | 判斷缺口、依賴或 implementation boundary 時 |
 | `07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md` | Observation Store + Context Compiler 的穩定設計 | 涉及 Observation / Context 時 |
 | `08_AGENT_CORE_ROADMAP.md` | Agent Core 長期能力與依賴方向 | 判斷長期依賴與能力方向時 |
+| `09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md` | Evidence / Knowledge / Unknown semantic foundation | 涉及 Evidence / Knowledge / Unknown 時 |
 
 以上是目前治理基線中的 stable-document baseline，不是永久且封閉的文件全集。
 
-**目前沒有 `09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md`。**
+`09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md` 現已正式建立並標記為 **APPROVED STABLE DESIGN**。它定義 Evidence / Knowledge / Unknown 的第一版 semantic boundary；它不是 implementation task，也不自動建立下一個 implementation Stage。
 
-Evidence / Knowledge B design 目前仍屬設計討論 / 待正式建立的 stable design，不能把不存在的文件當成已批准規格，也不能因為 roadmap 中有 B 就自行建立 implementation Stage。
-
-當未來正式建立新的 stable document 時，必須同時：
+未來正式建立新的 stable document 時，必須同時：
 
 1. 在本索引加入它；
 2. 定義它的唯一長期職責；
@@ -197,19 +196,32 @@ failing test
 
 再讀直接相關 source/tests。
 
-若工作進入尚未正式建立的 Evidence / Knowledge B design，不得猜測或自行建立穩定規格；應先停止在該 boundary，提出需要批准的 design。
-
 ### 修改 Evidence / Knowledge
 
-目前沒有已批准的 B stable design，因此：
+讀：
 
 ```text
-不要自行開始 implementation。
-不要建立永久 implementation task 文件。
-不要把 roadmap B 當成完整規格。
+03_INTERFACES.md
+06_IMPLEMENTATION_GAP_ANALYSIS.md
+09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md
 ```
 
-應先完成並批准對應 stable design，之後再由本索引指定最小閱讀集合。
+再依實際 increment 讀直接相關 source/tests。
+
+若需求或驗收有疑問，再讀：
+
+```text
+01_REQUIREMENTS.md
+04_ACCEPTANCE_TESTS.md
+```
+
+若需要測試方法，再讀：
+
+```text
+05_TEST_PLAN.md
+```
+
+`09` 是 stable design，但不代表 implementation 自動開始；仍必須依 development workflow 定義並取得明確批准的 implementation boundary。
 
 ### 修改 Runtime Capability
 
