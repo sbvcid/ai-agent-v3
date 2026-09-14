@@ -6,6 +6,7 @@ pub mod interpreter;
 pub mod knowledge_store;
 pub mod observation_store;
 pub mod process;
+pub mod semantic_updater;
 #[cfg(test)]
 pub mod process_tests;
 pub mod runtime;
@@ -26,6 +27,9 @@ pub use knowledge_store::{
 pub use observation_store::{InMemoryObservationStore, ObservationStore, ObservationStoreError};
 pub use process::ProcessSpec;
 pub use runtime::Runtime;
+pub use semantic_updater::{
+    KnowledgeStoreSemanticUpdater, SemanticUpdate, SemanticUpdateError, SemanticUpdater,
+};
 pub use test_doubles::{FakeLlmProvider, FakeRuntime, MockLlm};
 pub use types::{
     Action, ActionResult, ActionType, AgentDecision, AgentState, ExecutionState, FinalTaskStatus,
