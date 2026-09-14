@@ -154,7 +154,7 @@ direct tests
 = 由 docs/README.md 依本次 task 選出的最小必要 context
 ```
 
-這個區分是本專案的固定規則，不需要新 AI 自行推理。
+這個區分是本專案的固定治理規則；固定入口文件本身構成治理基線，不因未來新增 stable document 而例行修改。
 
 詳細導航與 task-specific reading set 見：
 
@@ -181,11 +181,13 @@ docs/README.md
 → stable docs 的唯一導航入口
 
 docs/01~08
-→ stable requirements / design / interface / acceptance / test / roadmap
+→ 目前 baseline 中的 stable requirements / design / interface / acceptance / test / roadmap
 
 history/
 → 歷史資料
 ```
+
+`docs/01~08` 是目前治理基線中的 stable document baseline，不是永久且封閉的文件全集。未來新增 stable document 時，不需要為了更新文件清單而修改 `AGENTS.md`、`README.md` 或 `DEVELOPMENT_WORKFLOW.md`；只需在 `docs/README.md` 建立導航、閱讀依賴與唯一職責，並建立該 stable document 本身。
 
 不存在永久的 implementation-task 文件。一次性的 coding-agent prompt、debugging、暫時 workaround 與未批准想法留在 active conversation、status 或 history 的適當位置。
 
