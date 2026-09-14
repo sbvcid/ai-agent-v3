@@ -16,6 +16,9 @@ fn test_ollama_provider_invalid_transport() {
     let mut provider = OllamaProvider::new("http://127.0.0.1:1", "gemma4:26b");
     let req = ProviderRequest {
         messages: vec![ProviderMessage::User("hello".to_string())],
+        knowledge_claims: Vec::new(),
+        evidence_links: Vec::new(),
+        knowledge_unknowns: Vec::new(),
     };
 
     let result = provider.chat(&req);
