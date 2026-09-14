@@ -6,9 +6,9 @@ pub mod interpreter;
 pub mod knowledge_store;
 pub mod observation_store;
 pub mod process;
-pub mod semantic_updater;
 #[cfg(test)]
 pub mod process_tests;
+pub mod semantic_updater;
 pub mod runtime;
 pub mod test_doubles;
 pub mod types;
