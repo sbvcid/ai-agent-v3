@@ -14,9 +14,10 @@ pub use core::{
     InMemoryKnowledgeStore, InMemoryObservationStore, InterpretationError, JsonFileCheckpointStore,
     KnowledgeClaim, KnowledgeClaimStatus, KnowledgeState, KnowledgeStore, KnowledgeStoreError,
     KnowledgeStoreSemanticUpdater, LoopError, LoopEvent, LoopStepOutcome, MockLlm, Observation,
-    ObservationKind, ObservationStore, ObservationStoreError, ProcessSpec, ProviderDecisionSource,
-    Runtime, SemanticUpdate, SemanticUpdateError, SemanticUpdater, StateCheckpoint, Unknown,
-    ValidationError, VerificationState,
+    ObservationKind, ObservationStore, ObservationStoreError, NoOpSemanticUpdateProducer,
+    ProcessSpec, ProviderDecisionSource, Runtime, SemanticUpdate, SemanticUpdateError,
+    SemanticUpdateProducer, SemanticUpdater, StateCheckpoint, Unknown, ValidationError,
+    VerificationState,
 };
 pub use provider::{
     ollama::OllamaProvider, LlmProvider, ProviderError, ProviderMessage, ProviderRequest,
