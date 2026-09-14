@@ -1,95 +1,97 @@
-# IMPLEMENTATION_STATUS.md
+# AI Agent v3 — Implementation Status
 
-## Current Status
+本文件是 **Current Implementation State** 的唯一集中入口。
 
-**Implementation Cycle 1: COMPLETED through Stage 9.4**
+它描述 Repository 現在實際做到什麼，不重新定義 target architecture，也不產生新的 implementation Stage。
 
-**Post-Cycle Increment: Observation Store + Context Compiler — COMPLETED**
+## 1. Current Status
 
-The first implementation cycle established the canonical Agent Core domain model, deterministic closed loop, checkpoint persistence, Filesystem Runtime foundation, Process Runtime foundation, LLM Provider abstraction, Ollama Provider, provider decision interpretation, real-provider closed-loop integration, and the release gate.
+```text
+Implementation Cycle 1: COMPLETED through Stage 9.4
+Post-Cycle Increment: Observation Store + Context Compiler — COMPLETED
+Current overall state: deterministic closed-loop foundation + first Agent Core observation/context foundation
+```
 
-The first post-cycle Agent Core increment (**Observation Store + Context Compiler**) has been successfully implemented, integrating:
-- `ObservationStore` abstraction and `InMemoryObservationStore` implementation;
-- `ContextCompiler` abstraction and `DefaultContextCompiler` implementation;
-- `AgentLoop` integration with authoritative observation storage;
-- `ProviderDecisionSource` integration using `ContextCompiler` and `CompiledContext`.
+**Stage 10 尚未定義。** 不得從本文件、README、文件編號或 roadmap 自行推導下一個 Stage。
 
-**Stage 10 is intentionally not defined.** No future stage should be inferred from this document or from the roadmap.
+目前 repository 的真實狀態仍必須以 source code、tests 與實際驗證結果確認。
 
----
-
-## Repository Baseline
+## 2. Repository Checkpoint
 
 ```text
 Repository: sbvcid/ai-agent-v3
 Branch: master
-Repository HEAD: 0f22610
-Last implementation-code baseline: b565f2a
+Last synchronized documentation checkpoint: 0402926
+Last implementation-code baseline from Cycle 1: b565f2a
 ```
 
-`0f22610` is the current repository HEAD at the time this status was updated.
-
-`b565f2a` remains the last implementation-code baseline from Cycle 1. Later commits include the Observation Store + Context Compiler implementation and documentation/navigation updates.
-
-The repository HEAD is current-state metadata, not a permanent implementation baseline. Verify the actual repository state with Git before relying on this value.
-
-Local untracked files, if present, are not part of the implementation baseline and must not be treated as project source unless explicitly added later.
-
----
-
-## Completed Implementation
-
-### Stage 1 — Foundation / Specification Review
-**COMPLETED**
-
-Rust project foundation, specification reconciliation, architecture boundaries, and implementation-status tracking were established.
-
-### Stage 2 — Canonical Core Data Model
-**COMPLETED**
-
-Established the canonical domain concepts:
-
-- `Goal`
-- `Action` / `ActionType`
-- `ActionResult`
-- `Observation` / `ObservationKind`
-- `ExecutionState`
-- `FinalTaskStatus`
-- `AgentDecision`
-- `KnowledgeState`
-- `VerificationState`
-- `AgentState`
-
-Canonical boundary:
+以上 commit 是狀態導航資訊，不是永久真相。新的 AI session 必須先執行：
 
 ```text
-LLM / Provider
-      ↓ ToolCall
-Provider Adapter
-      ↓
+git status
+git log --oneline --decorate -5
+```
+
+## 3. Completed Implementation
+
+### Stage 1 — Foundation / Specification Review
+
+**COMPLETED**
+
+建立 Rust project foundation、規格對齊、architecture boundary 與 implementation status tracking。
+
+### Stage 2 — Canonical Core Data Model
+
+**COMPLETED**
+
+建立主要 domain concepts：
+
+```text
+Goal
+Action / ActionType
+ActionResult
+Observation / ObservationKind
+ExecutionState
+FinalTaskStatus
+AgentDecision
+KnowledgeState
+VerificationState
+AgentState
+```
+
+Canonical boundary：
+
+```text
+Provider
+  ↓
+ToolCall
+  ↓
 Action
-      ↓
+  ↓
 Runtime
-      ↓
+  ↓
 ActionResult
 ```
 
-`ToolCall` is a provider/wire representation. `Action` is the Agent Core canonical action. `ActionResult` is the Runtime canonical result. `ToolResult` is not part of the canonical interface.
-
 ### Stage 3 — Serialization / Checkpoint
+
 **COMPLETED**
 
-Serde serialization, strict validation, `StateCheckpoint`, `CheckpointStore`, JSON persistence, and crash/resume restoration were implemented. Phase 0 intentionally uses JSON rather than SQLite or another external database.
+Serde serialization、validation、StateCheckpoint、CheckpointStore、JSON persistence、crash/resume restoration。
+
+Phase 0 使用 JSON；未因目前需求引入 SQLite 或其他外部資料庫。
 
 ### Stage 4 — Deterministic Test Doubles
+
 **COMPLETED**
 
-`MockLlm` and `FakeRuntime` provide deterministic, side-effect-free Core testing.
+`MockLlm` 與 `FakeRuntime` 支援 deterministic Core testing。
 
 ### Stage 5 — Deterministic Closed Loop / Event Trace
+
 **COMPLETED**
 
-The basic loop is implemented:
+基本 closed loop：
 
 ```text
 AgentState
@@ -111,9 +113,9 @@ AgentState
 Next Decision
 ```
 
-Also implemented: `EventTrace`, state-transition validation, execution/final-status separation, checkpoint cursor restoration, goal-verification gate for `Finish(Done)`, verification evidence recording, deterministic failure-recovery coverage, and crash/resume coverage.
+同時完成 EventTrace、state transition validation、execution/final-status separation、checkpoint cursor restoration、goal verification gate、failure-recovery coverage 與 crash/resume coverage。
 
-Important invariant:
+核心 invariant：
 
 ```text
 Running => final_status == None
@@ -122,40 +124,107 @@ Finish(Done) => Goal must be Verified
 ```
 
 ### Stage 6 — Filesystem Runtime
+
 **COMPLETED for the implemented foundation**
 
-Implemented path safety, sandbox containment, existence/read/list/metadata observation, create/write/append/delete/create-directory operations, structured errors, and Runtime integration.
+包含 path safety、sandbox containment、existence/read/list/metadata observation、create/write/append/delete/create-directory、structured errors 與 Runtime integration。
 
-This is a foundation, not the complete long-term filesystem capability set in the requirements.
+這是 foundation，不代表完整長期 Filesystem capability 已完成。
 
 ### Stage 7 — Process Runtime
+
 **COMPLETED for the implemented foundation**
 
-Implemented `ProcessSpec`, process execution, executable and working-directory policy, timeout polling, termination/reaping, stdout/stderr capture, exit status, and structured results.
+包含 `ProcessSpec`、process execution、executable / working-directory policy、timeout polling、termination/reaping、stdout/stderr capture、exit status 與 structured results。
 
-This is a foundation, not the complete long-term Job/Shell/Process capability set.
+這是 foundation，不代表完整長期 Job / Shell / Process capability 已完成。
 
 ### Stage 8 — LLM Provider / Ollama
+
 **COMPLETED**
 
-Implemented provider abstraction, Ollama adapter, configurable base URL/model, native `/api/chat` integration, and provider-independent response representation.
+完成 provider abstraction、Ollama adapter、configurable base URL/model、native `/api/chat` integration 與 provider-independent response representation。
 
 ### Stage 9 — Real LLM Integration / Release Gate
+
 **COMPLETED through Stage 9.4**
 
-Stage 9.1 implemented provider-response interpretation and strict tool-call validation.
+- Stage 9.1：provider-response interpretation 與 strict tool-call validation。
+- Stage 9.2：DecisionSource、provider-backed decision sourcing、ProviderDecisionSource、provider-independent error mapping。
+- Stage 9.3：real Ollama closed-loop integration。
+- Stage 9.4：release gate passed。
 
-Stage 9.2 implemented `DecisionSource`, provider-backed decision sourcing, `ProviderDecisionSource`, and provider-independent error mapping.
+目前 interpreter 的 implemented tool surface 仍刻意狹窄，主要為 `execute_process` 與 `read_file`。擴充 tool surface 必須依後續已批准的 semantic boundary 進行。
 
-Stage 9.3 implemented the real Ollama closed-loop integration.
+## 4. Completed Post-Cycle Increment
 
-Stage 9.4 passed the release gate.
+### Observation Store + Context Compiler
 
-The interpreter currently supports the deliberately narrow implemented tool surface (`execute_process` and `read_file`). Tool-surface expansion is deferred until Agent Core semantics are strengthened.
+**COMPLETED**
 
----
+第一版 semantic foundation 已完成：
 
-## Current Architecture
+```text
+Runtime ActionResult / Observation
+        ↓
+Observation Store
+        ↓
+Context Compiler
+        ↓
+Compiled Context
+        ↓
+Provider Request
+        ↓
+Agent Decision
+```
+
+已完成的主要能力：
+
+- `ObservationStore` abstraction
+- `InMemoryObservationStore`
+- stable observation ID / validation / duplicate rejection
+- deterministic retrieval / recent bounded view
+- `ContextCompiler` abstraction
+- `DefaultContextCompiler`
+- deterministic bounded context construction
+- `AgentLoop` authoritative observation storage integration
+- checkpoint restoration of the retained observation subset
+- `ProviderDecisionSource` 使用 `ContextCompiler`
+- provider request 不再直接從 `AgentState` ad-hoc 建立 semantic context
+- closed-loop tests 覆蓋 action result → observation → store → next provider context
+
+重要語意：
+
+```text
+Observation Store
+= authoritative in-process observation history
+
+AgentState.recent_observations
+= bounded compatibility / operational view
+
+ContextCompiler output
+= decision context
+```
+
+這三者不是三份獨立 history。
+
+### 驗證
+
+該 increment 已通過：
+
+```text
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo check
+cargo test
+git diff --check
+```
+
+並完成對應 closed-loop integration verification。實際 test count 應以目前 repository 執行結果為準，不應依賴舊 session 的數字。
+
+## 5. Current Architecture Boundary
+
+目前高層資料流：
 
 ```text
 User Goal
@@ -164,13 +233,11 @@ Agent Core
     ↕
 Agent State
     ↕
-Observation / Evidence
+Observation / semantic state
     ↓
-Decision Source
+Context Compiler
     ↓
-LLM Provider Adapter
-    ↓
-Provider
+Decision Source / LLM Provider
     ↓
 Agent Decision
     ↓
@@ -185,335 +252,99 @@ ActionResult / Observation
 Agent Core
 ```
 
-Long-term responsibility boundary:
+責任邊界：
 
 ```text
-Model        = reasoning capability
-Agent Core   = state, adaptation, decision loop, verification
-Observation  = environmental evidence
-Runtime      = computer-operation capability
-Persistence  = long-lived continuity
-```
+Agent Core
+= state / decision / adaptation / verification
 
-The Runtime must not become a hard-coded high-level workflow engine. The Agent Core must not depend on Windows-specific implementation details. The LLM provider must remain replaceable.
+Runtime
+= computer-operation capability
 
----
+Observation
+= environmental evidence
 
-## Formal Gap Analysis — Current Position
-
-A formal comparison against `docs/01_REQUIREMENTS.md` through `docs/05_TEST_PLAN.md` and the actual implementation has been performed. The detailed assessment is maintained in `docs/06_IMPLEMENTATION_GAP_ANALYSIS.md`.
-
-The key finding is that the current implementation is a **deterministic closed-loop skeleton**, not yet a fully adaptive Agent Core.
-
-### A. Complete / Fundamentally Established
-
-- Goal domain model and persistence.
-- Canonical Action / ActionResult boundary.
-- AgentDecision types.
-- ExecutionState / FinalTaskStatus separation.
-- Basic Goal Verification invariant.
-- Runtime abstraction.
-- Filesystem Runtime foundation.
-- Process Runtime foundation.
-- Provider abstraction and provider-independent interpretation boundary.
-- Deterministic test doubles.
-- JSON checkpoint persistence and resume foundation.
-- Basic closed-loop orchestration.
-
-### B. Partially Implemented / Semantic Gap Remains
-
-- `AgentState`: required fields exist, but many fields are storage only rather than full lifecycle semantics.
-- `Observation`: data model exists, but real environmental observation and evidence management are limited.
-- Verification: the boundary is correct, but verification evaluation is still minimal.
-- Environment observation: only limited capability exists.
-- Process runtime: synchronous foundation exists, but long-running Job semantics are incomplete.
-- Filesystem runtime: useful foundation exists, but the full long-term capability set is not implemented.
-- LLM output robustness: strict interpretation exists, but the full bounded correction loop required by the specifications is not yet implemented.
-
-### C. Missing Core Semantics
-
-The principal missing Agent Core semantics remain:
-
-- Observation Store with retrieval semantics.
-- Context Compiler and explicit bounded-context handling.
-- Evidence/knowledge lifecycle beyond simple storage fields.
-- Hypothesis lifecycle: create, support, contradict, revise, replace.
-- Progress detection.
-- Loop detection and circuit-breaker semantics.
-- Adaptive recovery / strategy revision.
-- Environment Delta semantics.
-- Stronger evidence-driven Goal Verification.
-- Generalized Job model and lifecycle.
-
-### D. Missing Runtime / Engineering Capabilities
-
-These remain future capability areas and are not automatically approved by their appearance here:
-
-- General Shell Runtime / interactive shell.
-- General Job management, cancellation, persistence and reconciliation.
-- Broader environment/resource/software discovery.
-- Engineering Runtime: repository inspection, code search, editing/patching, diff, build/test, static analysis, debugging, Git, rollback and engineering-specific verification.
-- Browser Runtime.
-- GUI / Windows UI Automation.
-- Vision-assisted interaction.
-- Broader Network and advanced Windows capabilities.
-
-These are identified gaps, not an implementation schedule.
-
----
-
-## Current Design Baseline
-
-The first post-cycle Agent Core design baseline is:
-
-`docs/07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md`
-
-Its scope is intentionally limited to:
-
-```text
-Observation Store
-        ↓
 Context Compiler
-        ↓
-Provider-facing semantic context
+= deterministic semantic context construction
+
+Provider Adapter
+= provider-specific wire formatting
 ```
 
-It establishes:
+Runtime 不得變成 hard-coded high-level workflow engine。
 
-- authoritative in-process observation history;
-- bounded context as a separate representation;
-- deterministic context compilation;
-- explicit ownership boundaries;
-- checkpoint compatibility rules;
-- deterministic test requirements.
+Agent Core 不得依賴 Windows-specific implementation details。
 
-It does **not** authorize implementation by itself and does not define a numbered Stage.
+Provider 必須保持可替換。
 
-The broader dependency roadmap is maintained in:
+## 6. Remaining Long-Term Work
 
-`docs/08_AGENT_CORE_ROADMAP.md`
+以下代表 **尚未完整實作的長期能力**，不是說第一版 Observation Store / Context Compiler 尚未存在：
 
-The roadmap is a dependency map, not a mandatory linear schedule.
+### Agent Core semantic direction
 
----
+- richer Observation semantics
+- Evidence / Knowledge semantics
+- Hypothesis lifecycle
+- Progress detection
+- Loop detection
+- Adaptive recovery
+- stronger Goal Verification
 
-## Dependency Direction
+### Runtime / capability direction
 
-The current dependency assessment is approximately:
+- richer Environment Observation
+- Shell / Interactive Shell
+- complete Job Runtime semantics
+- Engineering Runtime
+- Browser Runtime
+- GUI Runtime
+- richer Network / System Runtime
 
-```text
-Observation History
-        ↓
-Context Compilation
-        ↓
-Evidence / Knowledge
-        ↓
-Hypothesis / Problem Semantics
-        ↓
-Progress / Loop Awareness
-        ↓
-Adaptive Recovery
-        ↓
-Stronger Goal Verification
-```
+這些項目不能自行變成新的 implementation Stage。是否進入 implementation，必須先有適用的 stable design、scope、non-goals、acceptance criteria、dependency understanding 與使用者批准。
 
-Runtime capability branches such as Jobs, environment discovery, Engineering Runtime, Browser, GUI, and Vision have additional dependencies and are not required to follow this exact sequence.
+## 7. Known Documentation Rule
 
-This is architecture guidance, not a task queue.
-
----
-
-## Verification / Acceptance Position
-
-The first implementation cycle passed the applicable deterministic and integration gates for the implemented functionality. It does **not** imply that the full long-term behavioral requirements are complete.
-
-The following principles remain mandatory:
-
-1. Original Goal persists throughout the task lifecycle.
-2. Observation is evidence, not interpretation.
-3. Hypothesis is not automatically Fact.
-4. Action Success is not Goal Success.
-5. Runtime Failure is an Observation, not automatically Task Failure.
-6. New observations may change subsequent decisions.
-7. LLM output never executes directly.
-8. Goal Verification targets the Original Goal.
-9. Observation Store and LLM Context remain conceptually separate.
-10. Runtime provides capabilities and does not replace Agent Core reasoning.
-11. The system must not depend on a fixed high-level workflow.
-12. Runtime capability expansion must not require redesigning Agent Core.
-
----
-
-## Test Status
-
-At the completed first-cycle release checkpoint:
+本 repository 對新 AI 的 startup reading 已固定為：
 
 ```text
-135 passed
-0 failed
-3 ignored
-```
-
-The ignored tests are real Ollama integration tests requiring an external Ollama environment.
-
-Release validation included:
-
-- `cargo check`
-- `cargo fmt --check`
-- `cargo clippy --all-targets --all-features -- -D warnings`
-- deterministic test suite
-- integration tests
-- real-provider integration wiring review
-- release-gate review
-- repository cleanup
-
-These results validate the implemented first-cycle behavior only; they do not constitute acceptance of the missing adaptive-agent requirements.
-
----
-
-## Documentation Responsibility Boundary
-
-```text
-README.md
-    Human-facing project introduction / target architecture.
-
 AGENTS.md
-    Coding-Agent rules and architectural constraints.
-
 DEVELOPMENT_WORKFLOW.md
-    Development workflow, verification, interruption and recovery.
-
-docs/README.md
-    Documentation navigation index and task-specific reading map.
-
-docs/01_REQUIREMENTS.md
-    Required system behavior / target capabilities.
-
-docs/02_CONSTRUCTION.md
-    Construction and implementation principles.
-
-docs/03_INTERFACES.md
-    Semantic interface contracts.
-
-docs/04_ACCEPTANCE_TESTS.md
-    Behavioral acceptance criteria.
-
-docs/05_TEST_PLAN.md
-    Testing and verification methodology.
-
-docs/06_IMPLEMENTATION_GAP_ANALYSIS.md
-    Current formal gap analysis and dependency assessment.
-
-docs/07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md
-    Stable design baseline for the first post-cycle Agent Core increment.
-
-docs/08_AGENT_CORE_ROADMAP.md
-    Stable long-term dependency and capability roadmap.
-
 IMPLEMENTATION_STATUS.md
-    Current implementation reality, verification evidence, and active status.
-
-history/
-    Historical records only.
+README.md
+docs/README.md
 ```
 
-The permanent design documents should change only when the target architecture, formal requirements, or long-term dependency understanding materially changes. Temporary implementation instructions, debugging notes, and active coding prompts belong in the development conversation or status/history records as appropriate.
+然後由 `docs/README.md` 選擇 task-specific stable documents。
 
-Formal specifications describe the target system. Design documents describe stable architectural decisions. `IMPLEMENTATION_STATUS.md` describes implementation reality. The gap-analysis document compares reality against the formal target and must not silently redefine the requirements.
+不要因為 `docs/` 文件越來越多，就把所有文件加入 startup context。
 
----
-
-## Next Step
-
-No Stage 10 is defined.
-
-The current work is documentation/design stabilization, not source-code implementation.
-
-When the user approves implementation of a specific post-cycle increment, the implementation prompt will be generated in the active conversation from the approved design baseline. No permanent `09_IMPLEMENTATION_TASK` document is required.
-
-Until such approval, the coding agent must not infer a Stage or implement roadmap items merely because they are documented.
-
----
-
-## Implementation Cycle 1 Summary
+Stable design inventory 與 task-specific reading rules 的唯一導航來源是：
 
 ```text
-Stage 1     Foundation / Specification Review       COMPLETED
-Stage 2     Canonical Core Model                    COMPLETED
-Stage 3     Serialization / Checkpoint              COMPLETED
-Stage 4     Mock LLM / Fake Runtime                 COMPLETED
-Stage 5     Deterministic Closed Loop               COMPLETED
-Stage 6     Filesystem Runtime Foundation           COMPLETED
-Stage 7     Process Runtime Foundation              COMPLETED
-Stage 8     Ollama Provider                         COMPLETED
-Stage 9.1   Decision Interpreter                    COMPLETED
-Stage 9.2   Decision Source / Provider Integration COMPLETED
-Stage 9.3   Real Ollama Closed Loop                COMPLETED
-Stage 9.4   Release Gate                            PASS
-
-Implementation Cycle 1                            COMPLETED
-
-Stage 10                                             NOT DEFINED
+docs/README.md
 ```
 
----
+## 8. Current Next Step
 
-## Canonical Decisions
+**沒有自動產生的下一個 implementation Stage。**
 
-### Action / ToolCall Boundary
-
-`ToolCall` belongs to the provider/wire layer.
-
-`Action` is the Agent Core canonical domain model.
-
-`ActionResult` is the Runtime canonical result.
-
-`ToolResult` is not part of the canonical Runtime/Core interface.
-
-Provider adapters convert untrusted provider output into validated canonical Actions.
-
-### Execution State / Final Status Boundary
+下一次 implementation 工作必須在當次工作中明確確認：
 
 ```text
-ExecutionState:
-    Running
-    Waiting
-
-FinalTaskStatus:
-    Done
-    Blocked
-    Impossible
-    NeedUser
+目前 current state
+        ↓
+適用 stable design
+        ↓
+dependencies
+        ↓
+scope / non-goals
+        ↓
+acceptance criteria
+        ↓
+user approval
+        ↓
+one implementation increment
 ```
 
-Execution state and final task status remain separate.
-
-### Verification Boundary
-
-Verification is an Agent Core responsibility, not a Runtime action.
-
-Runtime actions provide evidence. Agent Core determines whether the Original Goal has been achieved.
-
-`Finish(Done)` requires sufficient verification evidence.
-
-### Persistence Boundary
-
-Phase 0 persistence remains:
-
-```text
-Serde + JSON + CheckpointStore
-```
-
-No SQLite or external database is required by the current Phase 0 design.
-
-### Runtime Boundary
-
-Runtime responsibilities include action execution, environment observation, result normalization, OS/process/filesystem resource management, capability/security enforcement, and timeout/cancellation/resource lifecycle.
-
-Agent Core responsibilities include goal understanding, evidence interpretation, hypothesis management, strategy adaptation, progress detection, additional observation requests, verification, and completion decisions.
-
-### Current Implementation Principle
-
-Do not expand the tool surface merely because a capability is listed in the long-term requirements.
-
-First establish the semantic Agent Core and Observation/Context machinery required for the system to adapt to observations and failures without a fixed high-level workflow.
+完成後 STOP，等待下一個明確指令。
