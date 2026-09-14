@@ -1,3 +1,45 @@
+## 目前狀態
+
+第一輪實作週期已完成（Stage 1–9.4）。
+
+目前已具備：
+
+- Canonical Agent Core
+- Deterministic Agent Loop
+- Mock LLM / Fake Runtime
+- JSON Checkpoint / Crash Resume
+- Filesystem Runtime
+- Process Runtime
+- Ollama Provider
+- Provider Decision Source
+- LLM Decision Interpretation / Validation
+- Real Ollama Closed Loop
+- Release Gate
+
+目前尚未完整實作的長期能力包括：
+
+- 完整 Observation Store
+- Context Compiler
+- 完整 Environment Observation
+- Shell / Interactive Shell
+- 完整 Job Runtime
+- Loop Detection / Adaptive Recovery
+- Engineering Runtime
+- Browser Runtime
+- GUI Runtime
+- 更完整的 Network / System Runtime
+
+下一個實作階段尚未定義。
+
+下一階段會先根據 Requirements、Construction、Interfaces、Acceptance Tests 與 Test Plan 進行 Gap Analysis，再決定下一個 implementation increment。
+
+
+
+
+
+
+
+
 # AI Agent v3
 
 一個以 Rust 開發的本地 AI Agent。
@@ -23,7 +65,7 @@
 
 ---
 
-## 1. 專案目前的核心架構
+## 1. 專案目前的目標架構
 
 ```text
 Agent v3

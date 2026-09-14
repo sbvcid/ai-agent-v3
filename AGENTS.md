@@ -23,23 +23,39 @@ Do not turn the project into a collection of hard-coded workflows.
 
 ## 2. Source of Truth
 
-Before making substantial changes, read:
+Before making substantial changes, read the current formal specifications:
 
-1. `docs/01_AI-Agent-v3-Rust-Requirements.txt`
-2. `docs/02_施工文件.txt`
+1. `docs/01_REQUIREMENTS.md`
+2. `docs/02_CONSTRUCTION.md`
 3. `docs/03_INTERFACES.md`
 4. `docs/04_ACCEPTANCE_TESTS.md`
 5. `docs/05_TEST_PLAN.md`
 
 These documents have different purposes:
 
-```
+```text
 01 Requirements
+   What the system is required to achieve.
+
 02 Construction / implementation constraints
+   Architectural and construction principles that implementation must preserve.
+
 03 Interface contracts
+   Stable semantic boundaries between components.
+
 04 Behavioral acceptance criteria
+   Observable behaviors that determine whether requirements are satisfied.
+
 05 Test strategy
-```
+   How those behaviors should be tested and evidenced.
+
+IMPLEMENTATION_STATUS.md describes the current implementation state.
+
+It is the only project document whose primary purpose is to track implementation progress.
+
+README.md is the human-facing project introduction. It describes the project purpose, principles, and target architecture, but is not an implementation progress tracker.
+
+history/ contains historical implementation records. It is archival only and must not be treated as current project instructions or source of truth unless historical context is explicitly required.
 
 Do not treat these documents as interchangeable.
 
@@ -582,17 +598,32 @@ The implementation may realize this loop differently.
 
 The behavior must remain general.
 
+## Documentation State Boundary
 
-在開始實作真實 Windows Runtime 前，
-優先建立：
+The formal specification documents describe the target system and its required behavior.
 
-1. 強型別 Core interfaces
-2. Mock LLM
-3. Fake Runtime
-4. Deterministic Agent Closed Loop
-5. Structured Event Log
-6. Persistence / Checkpoint
+They should not be used as implementation progress trackers.
 
-不得因為實作方便而將 Agent workflow 硬編碼成固定流程。
+Do not add "current status", "implemented", "not implemented", "partial", "Stage X completed", or similar progress information to:
 
-`history/` is archival only. Do not read or use files under `history/` as current project instructions or source of truth unless the current task explicitly requires historical context.
+- `docs/01_REQUIREMENTS.md`
+- `docs/02_CONSTRUCTION.md`
+- `docs/03_INTERFACES.md`
+- `docs/04_ACCEPTANCE_TESTS.md`
+- `docs/05_TEST_PLAN.md`
+
+Implementation progress belongs in:
+
+- `IMPLEMENTATION_STATUS.md`
+
+Historical implementation details belong in:
+
+- `history/`
+
+`README.md` may describe the project's target architecture and purpose, but should not become an implementation progress tracker.
+
+When implementation reality differs from the specification, do not modify the specification merely to make it match the current implementation.
+
+Record the implementation gap in `IMPLEMENTATION_STATUS.md`.
+
+If the specification itself is found to be ambiguous, contradictory, incomplete, or architecturally incorrect, handle that as a specification change according to Section 18.
