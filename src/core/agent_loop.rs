@@ -28,6 +28,7 @@
 
 use crate::core::checkpoint::StateCheckpoint;
 use crate::core::decision_source::{DecisionSource, DecisionSourceError};
+use crate::core::knowledge_store::InMemoryKnowledgeStore;
 use crate::core::observation_store::{
     InMemoryObservationStore, ObservationStore, ObservationStoreError,
 };
@@ -138,6 +139,7 @@ pub enum LoopStepOutcome {
 pub struct AgentLoop {
     state: AgentState,
     observation_store: InMemoryObservationStore,
+    knowledge_store: InMemoryKnowledgeStore,
     trace: EventTrace,
     max_steps: usize,
     current_step: usize,
@@ -155,6 +157,7 @@ impl AgentLoop {
         Self {
             state,
             observation_store,
+            knowledge_store: InMemoryKnowledgeStore::new(),
             trace: EventTrace::new(),
             max_steps: 50,
             current_step: 0,
@@ -164,6 +167,8 @@ impl AgentLoop {
     /// Create an AgentLoop from an existing StateCheckpoint, restoring state and execution cursor.
     ///
     /// Per `docs/02` §81, Checkpoint preserves AgentState, Goal, Knowledge States, and Event Cursor.
+    /// B2-A does not add KnowledgeStore persistence; the authoritative KnowledgeStore therefore
+    /// starts empty until a later semantic persistence boundary is explicitly designed.
     pub fn from_checkpoint(checkpoint: &StateCheckpoint) -> Self {
         let mut observation_store = InMemoryObservationStore::new();
         for obs in &checkpoint.state.recent_observations {
@@ -174,6 +179,7 @@ impl AgentLoop {
         Self {
             state: checkpoint.state.clone(),
             observation_store,
+            knowledge_store: InMemoryKnowledgeStore::new(),
             trace: EventTrace::new(),
             max_steps: 50,
             current_step: checkpoint.step_index as usize,
@@ -188,6 +194,16 @@ impl AgentLoop {
     /// Mutable reference to the ObservationStore.
     pub fn observation_store_mut(&mut self) -> &mut InMemoryObservationStore {
         &mut self.observation_store
+    }
+
+    /// Immutable reference to the authoritative KnowledgeStore.
+    pub fn knowledge_store(&self) -> &InMemoryKnowledgeStore {
+        &self.knowledge_store
+    }
+
+    /// Mutable reference to the authoritative KnowledgeStore.
+    pub fn knowledge_store_mut(&mut self) -> &mut InMemoryKnowledgeStore {
+        &mut self.knowledge_store
     }
 
     /// Record verification evidence and mark the goal as Verified.
@@ -245,8 +261,11 @@ impl AgentLoop {
         self.current_step += 1;
 
         // 1. Decision acquisition via DecisionSource
-        let decision =
-            decision_source.next_decision_with_store(&self.state, &self.observation_store)?;
+        let decision = decision_source.next_decision_with_stores(
+            &self.state,
+            &self.observation_store,
+            &self.knowledge_store,
+        )?;
         self.trace
             .push(LoopEvent::DecisionProduced(decision.clone()));
 
