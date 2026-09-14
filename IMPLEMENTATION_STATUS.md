@@ -9,7 +9,7 @@
 ```text
 Implementation Cycle 1: COMPLETED through Stage 9.4
 Post-Cycle Increment: Observation Store + Context Compiler — COMPLETED
-B1 — Knowledge Semantic Foundation: IMPLEMENTED, LOCAL VERIFICATION PENDING
+B1 — Knowledge Semantic Foundation: VERIFIED / RELEASE GATE PASSED
 Current overall state: deterministic closed-loop foundation + observation/context foundation + first Evidence/Knowledge semantic foundation
 ```
 
@@ -24,6 +24,7 @@ Repository: sbvcid/ai-agent-v3
 Branch: master
 Latest documentation checkpoint: b8ada04
 Latest B1 implementation commit: 6f86cdce
+Latest B1 verification status: VERIFIED / RELEASE GATE PASSED
 ```
 
 以上 commit 是狀態導航資訊，不是永久真相。新的 AI session 必須先執行：
@@ -225,7 +226,7 @@ git diff --check
 
 ## 5. B1 — Knowledge Semantic Foundation
 
-**IMPLEMENTED — LOCAL VERIFICATION PENDING**
+**VERIFIED / RELEASE GATE PASSED**
 
 本 increment 依 `docs/09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md` 實作，範圍固定為 Evidence / Knowledge semantic foundation。
 
@@ -280,19 +281,35 @@ ContextCompiler
 - `Hypothesis` 可以沒有 evidence support，但不得被表示為 Observed / Inferred。
 - EvidenceLink duplicate deterministic reject。
 
-### B1 驗證狀態
+### B1 驗證結果
 
-程式碼與 deterministic unit tests 已加入 repository，但本 session 尚未在使用者本機執行：
+使用者本機已完成完整 Release Gate 驗證：
 
 ```text
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo check
-cargo test
-git diff --check
+cargo fmt --check                         PASS
+cargo clippy --all-targets --all-features -- -D warnings   PASS
+cargo check                               PASS
+cargo test                                 PASS
+ git diff --check                          PASS
 ```
 
-因此在本機驗證完成前，不將 B1 標記為 VERIFIED / RELEASED。
+測試結果：
+
+```text
+112 unit tests passed / 0 failed
+11 closed-loop tests passed / 0 failed
+11 filesystem/process integration tests passed / 0 failed
+Ollama real integration tests: 3 ignored (requires running Ollama server/environment)
+Ollama provider tests: 2 passed
+process execution tests: 10 passed
+schema checkpoint tests: 6 passed
+test doubles tests: 6 passed
+doc-tests: 0
+```
+
+`cargo fmt` 已執行，之後 `cargo fmt --check` 通過；`git diff --check` 亦通過。Git 顯示的 LF→CRLF warning 是工作樹換行格式提示，不是 validation failure。
+
+因此 B1 現在正式視為 **VERIFIED / RELEASE GATE PASSED**。
 
 ## 6. Current Architecture Boundary
 
@@ -403,16 +420,8 @@ docs/README.md
 
 ## 9. Current Next Step
 
-B1 完成後不自動進入下一個 increment。
+B1 已完成並通過 Release Gate。
 
-目前唯一待辦是完成本機驗證並確認：
+目前沒有自動產生的下一個 implementation increment，也沒有 Stage 10。
 
-```text
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo check
-cargo test
-git diff --check
-```
-
-驗證通過後 STOP，等待下一個明確指令。
+Repository 應停在目前 verified baseline，等待下一個明確的 design / implementation 指令。
