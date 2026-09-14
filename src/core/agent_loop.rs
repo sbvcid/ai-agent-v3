@@ -16,6 +16,12 @@
 //!     ↓
 //! Observation
 //!     ↓
+//! ObservationStore
+//!     ↓
+//! Semantic Update Producer / Boundary
+//!     ↓
+//! KnowledgeStore
+//!     ↓
 //! AgentState update
 //!     ↓
 //! next loop / Finish
@@ -33,6 +39,10 @@ use crate::core::observation_store::{
     InMemoryObservationStore, ObservationStore, ObservationStoreError,
 };
 use crate::core::runtime::Runtime;
+use crate::core::semantic_updater::{
+    KnowledgeStoreSemanticUpdater, NoOpSemanticUpdateProducer, SemanticUpdateError,
+    SemanticUpdateProducer, SemanticUpdater,
+};
 use crate::core::types::{
     Action, ActionResult, AgentDecision, AgentState, ExecutionState, FinalTaskStatus, Observation,
     ObservationKind, ValidationError, VerificationState,
@@ -54,6 +64,9 @@ pub enum LoopError {
 
     #[error("Observation store error: {0}")]
     ObservationStore(#[from] ObservationStoreError),
+
+    #[error("Semantic update error: {0}")]
+    SemanticUpdate(#[from] SemanticUpdateError),
 
     #[error("Cannot step loop: task already finalized with status: {0:?}")]
     AlreadyFinished(FinalTaskStatus),
@@ -140,6 +153,8 @@ pub struct AgentLoop {
     state: AgentState,
     observation_store: InMemoryObservationStore,
     knowledge_store: InMemoryKnowledgeStore,
+    semantic_update_producer: Box<dyn SemanticUpdateProducer>,
+    semantic_updater: Box<dyn SemanticUpdater>,
     trace: EventTrace,
     max_steps: usize,
     current_step: usize,
@@ -158,6 +173,8 @@ impl AgentLoop {
             state,
             observation_store,
             knowledge_store: InMemoryKnowledgeStore::new(),
+            semantic_update_producer: Box::new(NoOpSemanticUpdateProducer),
+            semantic_updater: Box::new(KnowledgeStoreSemanticUpdater::new()),
             trace: EventTrace::new(),
             max_steps: 50,
             current_step: 0,
@@ -180,10 +197,31 @@ impl AgentLoop {
             state: checkpoint.state.clone(),
             observation_store,
             knowledge_store: InMemoryKnowledgeStore::new(),
+            semantic_update_producer: Box::new(NoOpSemanticUpdateProducer),
+            semantic_updater: Box::new(KnowledgeStoreSemanticUpdater::new()),
             trace: EventTrace::new(),
             max_steps: 50,
             current_step: checkpoint.step_index as usize,
         }
+    }
+
+    /// Configure the Core semantic producer and mutation boundary.
+    ///
+    /// The producer determines whether a recorded Observation warrants a semantic update;
+    /// the updater validates and applies that update to the authoritative KnowledgeStore.
+    /// AgentLoop remains orchestration code and does not infer Knowledge itself.
+    pub fn with_semantic_update_pipeline<P, U>(
+        mut self,
+        producer: P,
+        updater: U,
+    ) -> Self
+    where
+        P: SemanticUpdateProducer + 'static,
+        U: SemanticUpdater + 'static,
+    {
+        self.semantic_update_producer = Box::new(producer);
+        self.semantic_updater = Box::new(updater);
+        self
     }
 
     /// Immutable reference to the ObservationStore.
@@ -242,6 +280,20 @@ impl AgentLoop {
         self.current_step
     }
 
+    /// Apply a semantic update produced for an Observation that is already stored authoritatively.
+    fn apply_semantic_update(&mut self, observation: &Observation) -> Result<(), LoopError> {
+        let Some(update) = self.semantic_update_producer.produce(observation) else {
+            return Ok(());
+        };
+
+        self.semantic_updater.apply(
+            update,
+            &self.observation_store,
+            &mut self.knowledge_store,
+        )?;
+        Ok(())
+    }
+
     /// Execute a single step in the loop.
     pub fn step<DS: DecisionSource, R: Runtime>(
         &mut self,
@@ -290,11 +342,14 @@ impl AgentLoop {
                 self.trace
                     .push(LoopEvent::ObservationProduced(observation.clone()));
 
-                // 5. Update store and state
+                // 5. Observation becomes authoritative history before any semantic update.
                 self.observation_store.record(observation.clone())?;
                 self.state.record_action(action);
-                self.state.record_observation(observation);
+                self.state.record_observation(observation.clone());
                 self.trace.push(LoopEvent::StateUpdated);
+
+                // 6. Semantic update is derived only after ObservationStore::record succeeds.
+                self.apply_semantic_update(&observation)?;
 
                 LoopStepOutcome::Continue
             }
@@ -307,8 +362,10 @@ impl AgentLoop {
                     .push(LoopEvent::ObservationProduced(observation.clone()));
 
                 self.observation_store.record(observation.clone())?;
-                self.state.record_observation(observation);
+                self.state.record_observation(observation.clone());
                 self.trace.push(LoopEvent::StateUpdated);
+
+                self.apply_semantic_update(&observation)?;
 
                 LoopStepOutcome::Continue
             }
@@ -333,7 +390,7 @@ impl AgentLoop {
             }
         };
 
-        // 6. Validate state invariant after transition
+        // 7. Validate state invariant after transition
         self.state.validate()?;
 
         Ok(outcome)
@@ -353,5 +410,105 @@ impl AgentLoop {
             }
         }
         Ok(&self.state)
+    }
+}
+
+#[cfg(test)]
+mod semantic_integration_tests {
+    use super::*;
+    use crate::core::knowledge_store::{EvidenceLink, EvidenceRelation, KnowledgeClaim, KnowledgeClaimStatus};
+    use crate::core::semantic_updater::SemanticUpdate;
+    use crate::core::test_doubles::{FakeRuntime, MockLlm};
+    use crate::core::types::{ActionType, Goal};
+
+    #[derive(Debug)]
+    struct FixedClaimProducer;
+
+    impl SemanticUpdateProducer for FixedClaimProducer {
+        fn produce(&mut self, observation: &Observation) -> Option<SemanticUpdate> {
+            let observation_id = observation.id.clone();
+            let action_id = observation
+                .source_action_id
+                .clone()
+                .unwrap_or_else(|| "unknown-action".to_string());
+            let claim_id = format!("claim-for-{}", observation_id);
+            Some(SemanticUpdate::ClaimWithEvidence {
+                claim: KnowledgeClaim {
+                    id: claim_id.clone(),
+                    subject: action_id,
+                    predicate: "result".into(),
+                    value: observation.summary.clone(),
+                    status: KnowledgeClaimStatus::Observed,
+                    scope: "current task".into(),
+                    evidence_refs: vec![observation_id.clone()],
+                },
+                evidence: vec![EvidenceLink {
+                    observation_id,
+                    claim_id,
+                    relation: EvidenceRelation::Supports,
+                }],
+            })
+        }
+    }
+
+    #[test]
+    fn agent_loop_records_observation_before_semantic_update() {
+        let state = AgentState::new(Goal::new("test semantic integration"));
+        let mut agent = AgentLoop::new(state).with_semantic_update_pipeline(
+            FixedClaimProducer,
+            KnowledgeStoreSemanticUpdater::new(),
+        );
+        let action = Action::new("act-1", ActionType::Execute);
+        let mut decision_source = MockLlm::with_decisions(vec![AgentDecision::act(action)]);
+        let mut runtime = FakeRuntime::new();
+
+        agent.step(&mut decision_source, &mut runtime).unwrap();
+
+        let observation = agent
+            .observation_store()
+            .get("obs-1")
+            .expect("Observation must be stored before semantic update");
+        assert_eq!(observation.source_action_id.as_deref(), Some("act-1"));
+        assert_eq!(agent.knowledge_store().claims().len(), 1);
+        assert_eq!(agent.knowledge_store().evidence().len(), 1);
+        assert!(agent
+            .knowledge_store()
+            .evidence()
+            .iter()
+            .any(|link| link.observation_id == "obs-1"));
+    }
+
+    #[derive(Debug)]
+    struct InvalidEvidenceProducer;
+
+    impl SemanticUpdateProducer for InvalidEvidenceProducer {
+        fn produce(&mut self, observation: &Observation) -> Option<SemanticUpdate> {
+            Some(SemanticUpdate::Evidence(EvidenceLink {
+                observation_id: "missing-observation".into(),
+                claim_id: "missing-claim".into(),
+                relation: EvidenceRelation::Supports,
+            }))
+        }
+    }
+
+    #[test]
+    fn semantic_update_failure_preserves_recorded_observation() {
+        let state = AgentState::new(Goal::new("semantic failure"));
+        let mut agent = AgentLoop::new(state).with_semantic_update_pipeline(
+            InvalidEvidenceProducer,
+            KnowledgeStoreSemanticUpdater::new(),
+        );
+        let action = Action::new("act-1", ActionType::Execute);
+        let mut decision_source = MockLlm::with_decisions(vec![AgentDecision::act(action)]);
+        let mut runtime = FakeRuntime::new();
+
+        let error = agent
+            .step(&mut decision_source, &mut runtime)
+            .expect_err("invalid semantic update must fail deterministically");
+        assert!(matches!(error, LoopError::SemanticUpdate(_)));
+        assert!(agent.observation_store().get("obs-1").is_some());
+        assert!(agent.knowledge_store().claims().is_empty());
+        assert!(agent.knowledge_store().evidence().is_empty());
+        assert!(agent.knowledge_store().unknowns().is_empty());
     }
 }
