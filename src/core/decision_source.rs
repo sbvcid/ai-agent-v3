@@ -43,8 +43,8 @@ pub trait DecisionSource {
     }
 
     /// Extended semantic data path carrying the authoritative ObservationStore and
-    /// KnowledgeStore together. B2-A adds this boundary without changing existing
-    /// implementors; B2-B will make the provider path consume the KnowledgeStore.
+    /// KnowledgeStore together. B2 establishes this boundary without changing
+    /// existing implementors; the provider path consumes KnowledgeStore in B2-B.
     fn next_decision_with_stores(
         &mut self,
         state: &AgentState,
@@ -121,11 +121,20 @@ where
         &mut self,
         state: &AgentState,
         observation_store: &dyn ObservationStore,
-        _knowledge_store: &dyn KnowledgeStore,
+        knowledge_store: &dyn KnowledgeStore,
     ) -> Result<AgentDecision, DecisionSourceError> {
-        // B2-A establishes the authoritative multi-store boundary. B2-B will consume
-        // the KnowledgeStore through ContextCompiler::compile_with_knowledge().
-        self.next_decision_with_store(state, observation_store)
+        let compiled = self
+            .compiler
+            .compile_with_knowledge(state, observation_store, knowledge_store)
+            .map_err(|e| DecisionSourceError::Other(e.to_string()))?;
+        let request = ProviderRequest::from_compiled_context(&compiled);
+        let response = self
+            .provider
+            .chat(&request)
+            .map_err(|e| DecisionSourceError::Provider(e.to_string()))?;
+        let decision =
+            interpret(&response).map_err(|e| DecisionSourceError::Interpretation(e.to_string()))?;
+        Ok(decision)
     }
 }
 
@@ -165,6 +174,9 @@ impl ProviderRequest {
         }
         Self {
             messages: vec![ProviderMessage::User(content)],
+            knowledge_claims: compiled.knowledge_claims.clone(),
+            evidence_links: compiled.evidence_links.clone(),
+            knowledge_unknowns: compiled.knowledge_unknowns.clone(),
         }
     }
 }
@@ -173,7 +185,11 @@ impl ProviderRequest {
 mod tests {
     use super::*;
     use crate::core::agent_loop::{AgentLoop, LoopStepOutcome};
-    use crate::core::test_doubles::{FakeRuntime, MockLlm};
+    use crate::core::knowledge_store::{
+        EvidenceLink, EvidenceRelation, InMemoryKnowledgeStore, KnowledgeClaim,
+        KnowledgeClaimStatus,
+    };
+    use crate::core::test_doubles::{FakeLlmProvider, FakeRuntime, MockLlm};
     use crate::core::types::{
         Action, ActionResult, ActionType, FinalTaskStatus, Goal, Observation, ObservationKind,
     };
@@ -187,11 +203,9 @@ mod tests {
         ]);
         let state = AgentState::new(Goal::new("test goal"));
 
-        // 1. First decision via DecisionSource trait
         let d1 = DecisionSource::next_decision(&mut mock, &state).expect("should succeed");
         assert!(matches!(d1, AgentDecision::Observe { .. }));
 
-        // 2. Second decision via DecisionSource trait
         let d2 = DecisionSource::next_decision(&mut mock, &state).expect("should succeed");
         assert!(matches!(
             d2,
@@ -201,7 +215,6 @@ mod tests {
             }
         ));
 
-        // 3. Exhausted deterministic fallback via DecisionSource trait
         let d3 = DecisionSource::next_decision(&mut mock, &state).expect("should succeed");
         assert!(matches!(
             d3,
@@ -299,8 +312,7 @@ mod tests {
             }],
             finish_reason: Some("tool_calls".to_string()),
         };
-        let provider =
-            crate::core::test_doubles::FakeLlmProvider::with_responses(vec![Ok(response)]);
+        let provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
         let mut source = ProviderDecisionSource::new(provider);
         let state = AgentState::new(Goal::new("Run cargo test"));
 
@@ -328,8 +340,7 @@ mod tests {
             }],
             finish_reason: None,
         };
-        let provider =
-            crate::core::test_doubles::FakeLlmProvider::with_responses(vec![Ok(response)]);
+        let provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
         let mut source = ProviderDecisionSource::new(provider);
         let state = AgentState::new(Goal::new("Read lib.rs"));
 
@@ -347,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_provider_decision_source_provider_failure() {
-        let provider = crate::core::test_doubles::FakeLlmProvider::with_responses(vec![Err(
+        let provider = FakeLlmProvider::with_responses(vec![Err(
             ProviderError::Unavailable("Ollama down".to_string()),
         )]);
         let mut source = ProviderDecisionSource::new(provider);
@@ -371,8 +382,7 @@ mod tests {
             }],
             finish_reason: None,
         };
-        let provider =
-            crate::core::test_doubles::FakeLlmProvider::with_responses(vec![Ok(response)]);
+        let provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
         let mut source = ProviderDecisionSource::new(provider);
         let state = AgentState::new(Goal::new("Interpretation failure test"));
 
@@ -403,6 +413,9 @@ mod tests {
         let compiled = compiler.compile(&state, &store).unwrap();
         let req = ProviderRequest::from_compiled_context(&compiled);
         assert!(!req.messages.is_empty());
+        assert!(req.knowledge_claims.is_empty());
+        assert!(req.evidence_links.is_empty());
+        assert!(req.knowledge_unknowns.is_empty());
         match &req.messages[0] {
             ProviderMessage::User(text) => {
                 assert!(text.contains("Refactor codebase"));
@@ -415,9 +428,121 @@ mod tests {
     }
 
     #[test]
+    fn test_provider_request_carries_compiled_knowledge_semantics() {
+        let state = AgentState::new(Goal::new("Inspect service"));
+        let mut observations = InMemoryObservationStore::new();
+        observations
+            .record(Observation::new(
+                "obs-1",
+                ObservationKind::Environment,
+                "port 8080 is open",
+            ))
+            .unwrap();
+
+        let mut knowledge = InMemoryKnowledgeStore::new();
+        knowledge
+            .record_claim_with_evidence(
+                KnowledgeClaim {
+                    id: "claim-1".into(),
+                    subject: "service".into(),
+                    predicate: "port".into(),
+                    value: "8080".into(),
+                    status: KnowledgeClaimStatus::Observed,
+                    scope: "current host".into(),
+                    evidence_refs: vec!["obs-1".into()],
+                },
+                vec![EvidenceLink {
+                    observation_id: "obs-1".into(),
+                    claim_id: "claim-1".into(),
+                    relation: EvidenceRelation::Supports,
+                }],
+                &observations,
+            )
+            .unwrap();
+        knowledge
+            .record_unknown(crate::core::knowledge_store::Unknown {
+                id: "unknown-1".into(),
+                subject: "service".into(),
+                scope: "current host".into(),
+                question: "which process owns the port?".into(),
+            })
+            .unwrap();
+
+        let compiler = DefaultContextCompiler::default();
+        let compiled = compiler
+            .compile_with_knowledge(&state, &observations, &knowledge)
+            .unwrap();
+        let request = ProviderRequest::from_compiled_context(&compiled);
+
+        assert_eq!(request.knowledge_claims.len(), 1);
+        assert_eq!(request.knowledge_claims[0].id, "claim-1");
+        assert_eq!(request.evidence_links.len(), 1);
+        assert_eq!(request.evidence_links[0].observation_id, "obs-1");
+        assert_eq!(request.knowledge_unknowns.len(), 1);
+        assert_eq!(request.knowledge_unknowns[0].id, "unknown-1");
+    }
+
+    #[test]
+    fn test_provider_decision_source_consumes_authoritative_knowledge_store() {
+        let response = ProviderResponse {
+            content: String::new(),
+            tool_calls: vec![crate::provider::ProviderToolCall {
+                id: "tc-knowledge".to_string(),
+                name: "read_file".to_string(),
+                arguments: serde_json::json!({ "path": "README.md" }),
+            }],
+            finish_reason: None,
+        };
+        let provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
+        let mut source = ProviderDecisionSource::new(provider);
+        let state = AgentState::new(Goal::new("Use authoritative knowledge"));
+
+        let mut observations = InMemoryObservationStore::new();
+        observations
+            .record(Observation::new(
+                "obs-knowledge",
+                ObservationKind::Environment,
+                "service is reachable",
+            ))
+            .unwrap();
+
+        let mut knowledge = InMemoryKnowledgeStore::new();
+        knowledge
+            .record_claim_with_evidence(
+                KnowledgeClaim {
+                    id: "claim-knowledge".into(),
+                    subject: "service".into(),
+                    predicate: "reachable".into(),
+                    value: "true".into(),
+                    status: KnowledgeClaimStatus::Observed,
+                    scope: "current host".into(),
+                    evidence_refs: vec!["obs-knowledge".into()],
+                },
+                vec![EvidenceLink {
+                    observation_id: "obs-knowledge".into(),
+                    claim_id: "claim-knowledge".into(),
+                    relation: EvidenceRelation::Supports,
+                }],
+                &observations,
+            )
+            .unwrap();
+
+        let decision = source
+            .next_decision_with_stores(&state, &observations, &knowledge)
+            .expect("should consume knowledge store");
+        assert!(matches!(decision, AgentDecision::Act { .. }));
+
+        let request = &source.provider().recorded_requests()[0];
+        assert_eq!(request.knowledge_claims.len(), 1);
+        assert_eq!(request.knowledge_claims[0].id, "claim-knowledge");
+        assert_eq!(request.evidence_links.len(), 1);
+        assert_eq!(request.evidence_links[0].observation_id, "obs-knowledge");
+    }
+
+    #[test]
     fn test_compiler_and_provider_decision_source_accesses_authoritative_store_absent_from_state() {
         let goal = Goal::new("Test authoritative store vs state");
-        let state = AgentState::new(goal); // recent_observations is empty
+        let state = AgentState::new(goal);
 
         let mut store = InMemoryObservationStore::new();
         let obs = Observation::new(
@@ -441,8 +566,7 @@ mod tests {
             }],
             finish_reason: None,
         };
-        let provider =
-            crate::core::test_doubles::FakeLlmProvider::with_responses(vec![Ok(response)]);
+        let provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
         let mut source = ProviderDecisionSource::new(provider);
 
         let decision = source
@@ -462,8 +586,7 @@ mod tests {
             }],
             finish_reason: None,
         };
-        let provider =
-            crate::core::test_doubles::FakeLlmProvider::with_responses(vec![Ok(response)]);
+        let provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
         let mut source = ProviderDecisionSource::new(provider);
         let state = AgentState::new(Goal::new("Run echo via loop"));
 
