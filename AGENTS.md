@@ -28,28 +28,18 @@ The objective is to build a general Agent architecture whose Runtime capabilitie
 
 ## 2. Mandatory Project Orientation
 
-Before making substantial changes, inspect the repository and establish the current project state.
+Before making substantial changes, establish the current project state using a two-phase orientation process.
 
-At minimum, inspect:
+### Phase 1 — Repository Orientation
+
+First inspect only the project-level orientation documents:
 
 ```text
 AGENTS.md
 DEVELOPMENT_WORKFLOW.md
 IMPLEMENTATION_STATUS.md
 README.md
-
-docs/01_REQUIREMENTS.md
-docs/02_CONSTRUCTION.md
-docs/03_INTERFACES.md
-docs/04_ACCEPTANCE_TESTS.md
-docs/05_TEST_PLAN.md
-docs/06_IMPLEMENTATION_GAP_ANALYSIS.md
-docs/07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md
-docs/08_AGENT_CORE_ROADMAP.md
-
-Cargo.toml
-src/
-tests/
+docs/README.md
 ```
 
 Also inspect:
@@ -59,11 +49,51 @@ git status
 git log --oneline --decorate -5
 ```
 
+Do NOT automatically read every file under `docs/`.
+
+`docs/README.md` is the documentation navigation index. After Phase 1, use it to determine which stable design documents are actually relevant to the current task.
+
+### Phase 2 — Task-Specific Context
+
+Determine the task before loading additional project context.
+
+Use:
+
+```text
+docs/README.md
+```
+
+to select the minimum necessary set of:
+
+```text
+requirements
+architecture / construction principles
+interfaces
+acceptance criteria
+test plan
+implementation gap analysis
+specific Agent Core design
+roadmap
+source code
+tests
+```
+
+Do not load all stable design documents merely because they exist.
+
+The minimum-context principle is mandatory:
+
+```text
+First understand how to find the required knowledge.
+Then load only the knowledge required for the current task.
+```
+
+For implementation work, inspect the relevant source and tests after identifying the applicable stable design boundary.
+
 Run relevant verification commands before modifying substantial code when practical.
 
 Do not assume that the current source tree perfectly matches the target architecture described by the specifications.
 
-Determine the distinction between:
+Always distinguish:
 
 ```text
 Target Design
