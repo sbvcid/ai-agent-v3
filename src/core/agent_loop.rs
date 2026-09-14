@@ -210,11 +210,7 @@ impl AgentLoop {
     /// The producer determines whether a recorded Observation warrants a semantic update;
     /// the updater validates and applies that update to the authoritative KnowledgeStore.
     /// AgentLoop remains orchestration code and does not infer Knowledge itself.
-    pub fn with_semantic_update_pipeline<P, U>(
-        mut self,
-        producer: P,
-        updater: U,
-    ) -> Self
+    pub fn with_semantic_update_pipeline<P, U>(mut self, producer: P, updater: U) -> Self
     where
         P: SemanticUpdateProducer + 'static,
         U: SemanticUpdater + 'static,
@@ -416,7 +412,9 @@ impl AgentLoop {
 #[cfg(test)]
 mod semantic_integration_tests {
     use super::*;
-    use crate::core::knowledge_store::{EvidenceLink, EvidenceRelation, KnowledgeClaim, KnowledgeClaimStatus};
+    use crate::core::knowledge_store::{
+        EvidenceLink, EvidenceRelation, KnowledgeClaim, KnowledgeClaimStatus, KnowledgeStore,
+    };
     use crate::core::semantic_updater::SemanticUpdate;
     use crate::core::test_doubles::{FakeRuntime, MockLlm};
     use crate::core::types::{ActionType, Goal};
@@ -482,7 +480,7 @@ mod semantic_integration_tests {
     struct InvalidEvidenceProducer;
 
     impl SemanticUpdateProducer for InvalidEvidenceProducer {
-        fn produce(&mut self, observation: &Observation) -> Option<SemanticUpdate> {
+        fn produce(&mut self, _observation: &Observation) -> Option<SemanticUpdate> {
             Some(SemanticUpdate::Evidence(EvidenceLink {
                 observation_id: "missing-observation".into(),
                 claim_id: "missing-claim".into(),
