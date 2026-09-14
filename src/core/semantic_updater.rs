@@ -7,6 +7,7 @@ use crate::core::knowledge_store::{
     EvidenceLink, KnowledgeClaim, KnowledgeStore, KnowledgeStoreError, Unknown,
 };
 use crate::core::observation_store::ObservationStore;
+use crate::core::types::Observation;
 use thiserror::Error;
 
 /// A provider-independent semantic mutation requested by a Core semantic producer.
@@ -28,6 +29,26 @@ pub enum SemanticUpdate {
 pub enum SemanticUpdateError {
     #[error("Knowledge store error: {0}")]
     KnowledgeStore(#[from] KnowledgeStoreError),
+}
+
+/// Produces an already-constructed semantic update from a recorded Observation.
+///
+/// The producer is the reasoning-side seam: it decides whether an Observation
+/// warrants a semantic mutation, but it does not own or mutate the KnowledgeStore.
+/// The first B2-C implementation does not provide a production reasoning engine;
+/// the default producer is intentionally a no-op.
+pub trait SemanticUpdateProducer: std::fmt::Debug {
+    fn produce(&mut self, observation: &Observation) -> Option<SemanticUpdate>;
+}
+
+/// Default producer used by AgentLoop when no semantic producer is configured.
+#[derive(Debug, Default)]
+pub struct NoOpSemanticUpdateProducer;
+
+impl SemanticUpdateProducer for NoOpSemanticUpdateProducer {
+    fn produce(&mut self, _observation: &Observation) -> Option<SemanticUpdate> {
+        None
+    }
 }
 
 /// Core-level mutation boundary for derived semantic state.
@@ -105,6 +126,13 @@ mod tests {
             scope: "current task".into(),
             evidence_refs: vec!["obs-1".into()],
         }
+    }
+
+    #[test]
+    fn no_op_producer_does_not_create_semantic_state() {
+        let observation = Observation::new("obs-1", ObservationKind::ActionResult, "completed");
+        let mut producer = NoOpSemanticUpdateProducer;
+        assert_eq!(producer.produce(&observation), None);
     }
 
     #[test]
