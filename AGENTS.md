@@ -1,4 +1,4 @@
-# AI Agent v3 — Codex Instructions
+# AI Agent v3 — Coding Agent Instructions
 
 ## 1. Purpose
 
@@ -8,10 +8,13 @@ The project is intended to provide a general Agent Runtime and Agent Core rather
 
 The core architectural principles are:
 
-```
+```text
 Agent Core = reasoning, understanding, hypothesis, planning, decision, adaptation, verification
+
 Runtime    = computer operation
+
 Observation = evidence connecting the environment to the Agent
+
 Persistence = state required for continuity and recovery
 ```
 
@@ -19,55 +22,353 @@ The Agent must be able to observe the environment, reason about the current situ
 
 Do not turn the project into a collection of hard-coded workflows.
 
+The objective is to build a general Agent architecture whose Runtime capabilities remain useful as LLM capabilities improve.
+
 ---
 
-## 2. Source of Truth
+## 2. Mandatory Project Orientation
 
-Before making substantial changes, read the current formal specifications:
+Before making substantial changes, inspect the repository and establish the current project state.
 
-1. `docs/01_REQUIREMENTS.md`
-2. `docs/02_CONSTRUCTION.md`
-3. `docs/03_INTERFACES.md`
-4. `docs/04_ACCEPTANCE_TESTS.md`
-5. `docs/05_TEST_PLAN.md`
+At minimum, inspect:
 
-These documents have different purposes:
+```text
+AGENTS.md
+DEVELOPMENT_WORKFLOW.md
+IMPLEMENTATION_STATUS.md
+README.md
+
+docs/01_REQUIREMENTS.md
+docs/02_CONSTRUCTION.md
+docs/03_INTERFACES.md
+docs/04_ACCEPTANCE_TESTS.md
+docs/05_TEST_PLAN.md
+docs/06_IMPLEMENTATION_GAP_ANALYSIS.md
+docs/07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md
+docs/08_AGENT_CORE_ROADMAP.md
+
+Cargo.toml
+src/
+tests/
+```
+
+Also inspect:
+
+```text
+git status
+git log --oneline --decorate -5
+```
+
+Run relevant verification commands before modifying substantial code when practical.
+
+Do not assume that the current source tree perfectly matches the target architecture described by the specifications.
+
+Determine the distinction between:
+
+```text
+Target Design
+    =
+what the architecture is intended to become
+
+Current Implementation
+    =
+what the repository actually implements now
+```
+
+These are related but are not interchangeable.
+
+---
+
+## 3. Source of Truth
+
+The project documents have different responsibilities.
+
+Do not treat them as interchangeable.
+
+### 3.1 Stable Design Documents
+
+The following documents describe relatively stable project requirements, architecture, interfaces, acceptance criteria, testing methodology, design analysis, and long-term direction:
+
+```text
+docs/01_REQUIREMENTS.md
+docs/02_CONSTRUCTION.md
+docs/03_INTERFACES.md
+docs/04_ACCEPTANCE_TESTS.md
+docs/05_TEST_PLAN.md
+docs/06_IMPLEMENTATION_GAP_ANALYSIS.md
+docs/07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md
+docs/08_AGENT_CORE_ROADMAP.md
+```
+
+Their purposes are different:
 
 ```text
 01 Requirements
-   What the system is required to achieve.
+    What the system is required to achieve.
 
-02 Construction / implementation constraints
-   Architectural and construction principles that implementation must preserve.
+02 Construction
+    Architectural and implementation principles that construction must preserve.
 
-03 Interface contracts
-   Stable semantic boundaries between components.
+03 Interfaces
+    Stable semantic boundaries between components.
 
-04 Behavioral acceptance criteria
-   Observable behaviors that determine whether requirements are satisfied.
+04 Acceptance Tests
+    Observable behaviors that determine whether requirements are satisfied.
 
-05 Test strategy
-   How those behaviors should be tested and evidenced.
+05 Test Plan
+    Testing and verification methodology.
 
-IMPLEMENTATION_STATUS.md describes the current implementation state.
+06 Implementation Gap Analysis
+    Formal assessment of the relationship between the target architecture and current implementation.
 
-It is the only project document whose primary purpose is to track implementation progress.
+07 Agent Core Observation Increment Design
+    Stable design baseline for the Observation Store and Context Compiler increment.
 
-README.md is the human-facing project introduction. It describes the project purpose, principles, and target architecture, but is not an implementation progress tracker.
+08 Agent Core Roadmap
+    Long-term Agent Core capability/dependency map and architectural direction.
+```
 
-history/ contains historical implementation records. It is archival only and must not be treated as current project instructions or source of truth unless historical context is explicitly required.
+These documents are not implementation diaries.
 
-Do not treat these documents as interchangeable.
+Do not routinely rewrite them after every coding increment.
 
-If the documents conflict, do not silently choose one interpretation.
+### 3.2 Current Implementation State
 
-First identify the conflict, determine the interpretation that best preserves the overall architecture, and update the affected specification when necessary.
+```text
+IMPLEMENTATION_STATUS.md
+```
 
-Do not knowingly implement an unresolved contradiction.
+is the primary document for current implementation reality.
+
+It may contain:
+
+```text
+current repository state
+implemented capabilities
+known gaps
+current checkpoint
+verification evidence
+test results
+active implementation status
+```
+
+When an implementation increment is completed, update `IMPLEMENTATION_STATUS.md` when necessary so that it reflects the actual repository state.
+
+Do not use stable design documents as progress trackers.
+
+### 3.3 Historical Records
+
+```text
+history/
+```
+
+contains historical implementation records.
+
+Historical records are archival.
+
+Do not treat them as current instructions unless historical context is explicitly required.
+
+### 3.4 README
+
+```text
+README.md
+```
+
+is the human-facing introduction to the project.
+
+It may describe:
+
+```text
+project purpose
+target architecture
+major principles
+high-level capabilities
+```
+
+It should not become an implementation progress tracker.
+
+### 3.5 Active Conversation
+
+The active development conversation may contain:
+
+```text
+one-time implementation prompts
+temporary debugging information
+implementation-specific instructions
+unresolved design discussions
+temporary hypotheses
+test output
+one-off migration instructions
+```
+
+Do not create permanent documentation merely to store a one-time coding prompt.
 
 ---
 
-## 3. Architectural Principles
+## 4. Documentation Governance
+
+This rule is mandatory.
+
+The project has a strict distinction between:
+
+```text
+Stable Design
+Current State
+History
+Temporary Implementation Context
+```
+
+Do not collapse these categories.
+
+### 4.1 Stable Design Does Not Mean Immutable
+
+The `docs/` files are stable architectural documents, not immutable files.
+
+They may be changed when:
+
+```text
+requirements materially change
+architecture materially changes
+stable semantic interfaces change
+acceptance criteria change
+long-term dependency relationships change
+the existing design is proven to be incorrect or incomplete
+```
+
+They should NOT be changed merely because:
+
+```text
+an implementation detail changed
+a module was refactored
+a test was reorganized
+a coding agent prefers another implementation
+a temporary workaround was used
+a local data structure changed
+a file was moved
+an implementation increment was completed
+the current implementation happens to differ from the target design
+```
+
+### 4.2 Implementation Must Not Redefine Design Automatically
+
+Never use the following reasoning:
+
+```text
+"The code currently works this way,
+therefore the architecture document should be changed to describe the code."
+```
+
+Instead determine:
+
+```text
+Is the implementation incomplete?
+
+or
+
+Is the stable design actually wrong?
+```
+
+If the implementation is incomplete, preserve the design and record the gap in:
+
+```text
+IMPLEMENTATION_STATUS.md
+```
+
+If the stable design is genuinely wrong or incomplete, stop the affected implementation work and propose a specification/design change.
+
+Do not silently redefine the architecture.
+
+### 4.3 Documentation Synchronization Rule
+
+After completing an implementation increment:
+
+1. Verify that the implementation matches the applicable stable design.
+2. Update `IMPLEMENTATION_STATUS.md` if current-state information changed.
+3. Add historical information to `history/` when appropriate.
+4. Do NOT automatically rewrite `docs/01~08`.
+5. Only modify a stable design document when the design itself has materially changed or was proven incorrect.
+
+A coding agent must not perform a broad documentation rewrite merely because implementation has finished.
+
+---
+
+## 5. Stable Design Conflict Procedure
+
+If implementation reveals a genuine conflict with a stable design document:
+
+```text
+implementation
+    ↓
+design conflict discovered
+    ↓
+STOP affected implementation
+    ↓
+describe the conflict
+    ↓
+explain alternatives and consequences
+    ↓
+obtain approval
+    ↓
+update stable design if approved
+    ↓
+re-establish implementation boundary
+    ↓
+continue implementation
+```
+
+Do not:
+
+```text
+silently modify the design
+silently ignore the design
+silently implement a third interpretation
+rewrite the architecture to make the current code appear correct
+```
+
+When a design change is necessary, identify:
+
+```text
+what conflicts
+why it conflicts
+what the current design says
+what the proposed design says
+why the change is necessary
+which documents are affected
+what implementation consequences follow
+```
+
+---
+
+## 6. Implementation Prompt Policy
+
+Implementation prompts are temporary execution instructions.
+
+Do not create a permanent:
+
+```text
+09_IMPLEMENTATION_TASK.md
+```
+
+or equivalent document merely to store the next coding task.
+
+A specific implementation prompt should normally be generated in the active development conversation after:
+
+```text
+design boundary is understood
+dependencies are understood
+scope is defined
+non-goals are defined
+acceptance criteria are defined
+the implementation increment is explicitly approved
+```
+
+The coding agent must implement the approved boundary and must not silently expand it.
+
+Temporary implementation instructions belong to the active conversation unless they become a genuine stable architectural rule.
+
+---
+
+## 7. Architectural Principles
 
 Preserve these principles unless the specifications are deliberately changed:
 
@@ -91,28 +392,30 @@ The architecture should remain general enough that a substantially stronger LLM 
 
 ---
 
-## 4. Decision and Action Semantics
+## 8. Decision and Action Semantics
 
 The logical Agent decision model is:
 
-```
+```text
 AgentDecision
-  Observe
-  Act
-  Wait
-  Finish
+
+    Observe
+    Act
+    Wait
+    Finish
 ```
 
 `Act` causes a Runtime action to be performed.
 
 The Runtime action model is:
 
-```
+```text
 Action
-  Observe
-  Execute
-  Interact
-  Wait
+
+    Observe
+    Execute
+    Interact
+    Wait
 ```
 
 Verification is Agent Core behavior.
@@ -121,7 +424,7 @@ Verification is not a special Runtime Action.
 
 Terminal task outcomes are:
 
-```
+```text
 Done
 Blocked
 Impossible
@@ -134,7 +437,7 @@ Do not introduce `Continue` as a terminal task outcome.
 
 ---
 
-## 5. Runtime Design
+## 9. Runtime Design
 
 Runtime capabilities should be expressed as general capability contracts rather than hard-coded workflows.
 
@@ -168,11 +471,11 @@ Engineering Runtime should provide general development capabilities such as:
 
 Do not implement a mandatory workflow such as:
 
-```
+```text
 search -> edit -> build -> test
 ```
 
-The Agent must be able to choose a different sequence when the evidence requires it.
+The Agent must be able to choose a different sequence when evidence requires it.
 
 Do not create specialized tools merely because one current test happens to use them.
 
@@ -180,7 +483,7 @@ Prefer general capabilities that can support multiple tasks.
 
 ---
 
-## 6. Environment and Permission Boundaries
+## 10. Environment and Permission Boundaries
 
 Do not assume elevated privileges.
 
@@ -190,7 +493,7 @@ The Agent may attempt reasonable alternatives when appropriate.
 
 If actual user action, authorization, credentials, physical interaction, or an unavailable interactive environment is required, the task may end as:
 
-```
+```text
 NeedUser
 ```
 
@@ -202,7 +505,7 @@ Do not hide permission failures from Agent Core.
 
 ---
 
-## 7. Long-Running Jobs
+## 11. Long-Running Jobs
 
 Long-running operations must not be represented only by a blocking function call when the operation needs to remain observable or controllable.
 
@@ -220,7 +523,7 @@ Timeout is an Observation.
 
 Timeout does not automatically mean:
 
-```
+```text
 Failed
 Blocked
 Impossible
@@ -229,17 +532,57 @@ NeedUser
 
 The Agent must evaluate the evidence and decide what to do next.
 
+A Job model should remain a semantic concept rather than being permanently represented as an ad-hoc collection of strings or process IDs if richer semantics are required.
+
 ---
 
-## 8. Observation and State
+## 12. Observation and State
 
 Observations are evidence from the environment.
 
-Keep raw observations available for later inspection.
+The Observation Store is the authoritative in-process observation history when the architecture requires persistent observation semantics.
 
-The Context Compiler may select, summarize, compress, or prioritize observations for the LLM context, but must preserve decision-critical evidence.
+`AgentState.recent_observations`, when present, is a bounded operational or compatibility view and must not silently become a second independent observation history.
 
-Do not hard-code a fragile context-token ratio as an architectural requirement.
+When recording an action result that produces an observation:
+
+```text
+Action Result
+    ↓
+Observation Store
+    ↓
+bounded AgentState view
+```
+
+Preserve decision-critical evidence.
+
+The Context Compiler may select, summarize, compress, or prioritize observations for LLM context, but the compiled context must not silently become the authoritative history.
+
+Do not confuse:
+
+```text
+Observation History
+```
+
+with:
+
+```text
+LLM Context
+```
+
+They have different purposes.
+
+Do not hard-code a fragile provider-specific token ratio as an architectural requirement.
+
+Prefer deterministic semantic bounds such as:
+
+```text
+maximum observations
+maximum actions
+maximum evidence items
+```
+
+when a bounded context is required.
 
 `Fact`, `Observed`, `Inferred`, `Hypothesis`, and `Unknown` are epistemic concepts used by Agent Core.
 
@@ -247,13 +590,41 @@ Do not force raw Runtime observations into these categories unless the interface
 
 ---
 
-## 9. LLM Boundary
+## 13. Context Compiler
+
+The Context Compiler is a semantic component.
+
+It should transform Agent state and relevant evidence into an appropriate context representation for the decision model.
+
+It should not merely be an opaque string-building helper.
+
+The architecture should preserve the ability to reason about:
+
+```text
+goal
+current state
+recent actions
+observations
+evidence
+hypotheses
+unknowns
+verification state
+remaining work
+```
+
+Do not prematurely expose provider-specific token accounting as a Core semantic interface.
+
+Do not make the Core dependent on one LLM provider's context format.
+
+---
+
+## 14. LLM Boundary
 
 Treat LLM output as untrusted structured input.
 
 The conceptual processing pipeline is:
 
-```
+```text
 parse
   ->
 validate
@@ -283,9 +654,13 @@ Validate, as appropriate:
 
 Do not assume the model will always produce valid JSON or valid action arguments.
 
+Do not persist private chain-of-thought.
+
+Persist structured decision-relevant information instead.
+
 ---
 
-## 10. Loop Detection and Adaptation
+## 15. Loop Detection and Adaptation
 
 The Agent must avoid blind repetition.
 
@@ -307,21 +682,25 @@ Do not solve loop-detection acceptance tests through hard-coded special cases.
 
 The Agent should be capable of changing strategy rather than merely counting retries.
 
+A generic safety bound such as maximum steps may exist as a resource protection mechanism, but it must not be mistaken for genuine loop detection.
+
 ---
 
-## 11. Verification
+## 16. Verification
 
 Never equate:
 
-```
+```text
 Action Success == Goal Success
 ```
 
 Verification should operate at useful levels such as:
 
-```
+```text
 Action Success
+
 Subtask Success
+
 Goal Success
 ```
 
@@ -329,19 +708,25 @@ Final verification must relate to the original user goal.
 
 For example:
 
-```
+```text
 command succeeded
+
 but requested output is missing
+
 =>
+
 Goal is not verified
 ```
 
 Likewise:
 
-```
+```text
 command reported failure
+
 but environment already satisfies the requested goal
+
 =>
+
 Agent should inspect actual state before concluding that the goal failed
 ```
 
@@ -349,7 +734,7 @@ When verification is uncertain, preserve the uncertainty instead of claiming suc
 
 ---
 
-## 12. Persistence and Recovery
+## 17. Persistence and Recovery
 
 The Agent must support continuity for long-running or multi-step tasks.
 
@@ -365,17 +750,25 @@ The implementation should support, where required:
 * crash recovery
 * rollback where appropriate
 
+Checkpoint restoration must preserve the intended semantic state rather than merely restoring arbitrary implementation data.
+
 Do not create a persistence abstraction merely to satisfy a test if it cannot support real recovery semantics.
+
+Do not introduce a stronger persistence technology merely because it appears architecturally impressive.
+
+Use the simplest persistence mechanism that satisfies the actual requirements.
 
 ---
 
-## 13. Security and Safety
+## 18. Security and Safety
 
 Keep these concepts separate:
 
-```
+```text
 Capability = what Runtime technically exposes
+
 Policy     = what Agent is currently allowed to request
+
 OS security = what Windows actually permits
 ```
 
@@ -389,7 +782,7 @@ Do not hide security-related failures from Agent Core.
 
 ---
 
-## 14. Implementation Strategy
+## 19. Implementation Strategy
 
 Prefer the simplest architecture that satisfies the behavioral requirements.
 
@@ -414,7 +807,7 @@ Prefer standard Rust patterns and well-maintained crates.
 
 Do not add dependencies without a concrete reason.
 
-Unless the specifications explicitly constrain implementation details, Codex should determine:
+Unless the specifications explicitly constrain implementation details, the coding agent may determine:
 
 * crate selection
 * internal data structures
@@ -427,36 +820,81 @@ Unless the specifications explicitly constrain implementation details, Codex sho
 
 The specifications define required behavior and stable contracts, not every implementation detail.
 
+Do not change stable semantic interfaces merely to simplify a local implementation.
+
 ---
 
-## 15. Change Procedure
+## 20. Incremental Implementation Rules
+
+Implementation must proceed through explicit coherent increments.
+
+For each increment:
+
+```text
+Design boundary
+    ↓
+Dependencies
+    ↓
+Scope
+    ↓
+Non-goals
+    ↓
+Acceptance criteria
+    ↓
+Implementation
+    ↓
+Verification
+    ↓
+Checkpoint
+```
+
+Do not silently expand an approved increment.
+
+If implementation exposes a dependency that was not included in the approved boundary:
+
+1. Identify the dependency.
+2. Determine whether it is required or merely convenient.
+3. Do not automatically expand scope.
+4. Report the issue.
+5. Only expand the implementation boundary after explicit approval.
+
+Do not implement future roadmap items merely because they appear related.
+
+---
+
+## 21. Change Procedure
 
 For every non-trivial change:
 
 1. Inspect the current implementation.
 2. Read the relevant specification sections.
-3. Identify affected interfaces.
-4. Identify affected acceptance requirements.
-5. Check for contradictions or missing assumptions.
-6. Design the smallest coherent change.
-7. Implement the change.
-8. Add or update tests.
-9. Run appropriate verification commands.
-10. Inspect the resulting diff.
-11. Re-check affected acceptance criteria.
-12. Report remaining uncertainty or limitations honestly.
+3. Inspect `IMPLEMENTATION_STATUS.md`.
+4. Identify affected interfaces.
+5. Identify affected acceptance requirements.
+6. Check for contradictions or missing assumptions.
+7. Identify whether the requested change is within the approved implementation boundary.
+8. Design the smallest coherent change.
+9. Implement the change.
+10. Add or update tests.
+11. Run appropriate verification commands.
+12. Inspect the resulting diff.
+13. Re-check affected acceptance criteria.
+14. Update `IMPLEMENTATION_STATUS.md` if current state changed.
+15. Report remaining uncertainty or limitations honestly.
 
 Do not modify unrelated code merely to make the current task appear complete.
 
 Do not rewrite large parts of the architecture without first establishing why the existing design cannot satisfy the requirements.
 
+Do not modify stable design documents merely to reflect implementation details.
+
 ---
 
-## 16. Testing Requirements
+## 22. Testing Requirements
 
 Use:
 
-```
+```text
 docs/04_ACCEPTANCE_TESTS.md
 ```
 
@@ -464,7 +902,7 @@ as the behavioral acceptance specification.
 
 Use:
 
-```
+```text
 docs/05_TEST_PLAN.md
 ```
 
@@ -484,25 +922,35 @@ Do not make acceptance tests pass through hard-coded special cases.
 
 A passing:
 
-```
+```text
 cargo test
 ```
 
 is useful evidence, but it is not by itself proof that all Agent behavioral requirements are satisfied.
 
+Tests must provide evidence for the behavior they claim to validate.
+
 ---
 
-## 17. Required Verification Before Completion
+## 23. Required Verification Before Completion
 
 When applicable, run:
 
-```
+```text
 cargo fmt --check
 cargo check
 cargo test
 ```
 
-Run additional repository-specific checks when appropriate, including linting, static analysis, integration tests, or end-to-end tests.
+Run additional repository-specific checks when appropriate, including:
+
+```text
+linting
+static analysis
+integration tests
+end-to-end tests
+runtime-specific verification
+```
 
 If a required check cannot be run, state why.
 
@@ -510,15 +958,54 @@ For Agent behavior changes, add or update tests that provide evidence for the af
 
 For significant changes, inspect:
 
-```
+```text
 git diff
+git status
 ```
 
 and ensure no accidental files, generated artifacts, secrets, or unrelated modifications were introduced.
 
+Do not claim completion merely because compilation succeeds.
+
 ---
 
-## 18. Handling Specification Problems
+## 24. Checkpoint and Recovery
+
+Every completed implementation increment should leave the repository in a recoverable state.
+
+A completed increment should have:
+
+```text
+working tree understood
+tests run
+verification results recorded
+current implementation state updated
+commit/checkpoint identifiable
+```
+
+If implementation is interrupted:
+
+* do not pretend the increment is complete
+* record the current state in `IMPLEMENTATION_STATUS.md` when appropriate
+* preserve useful debugging information
+* do not rewrite stable design documents merely to describe an interrupted implementation
+* leave enough information for another coding agent to resume safely
+
+A new coding agent must be able to determine:
+
+```text
+what was intended
+what was actually implemented
+what passed
+what failed
+what remains
+```
+
+without relying on undocumented assumptions.
+
+---
+
+## 25. Handling Specification Problems
 
 If you discover:
 
@@ -543,54 +1030,169 @@ When a specification change is necessary, explain:
 * why the change is necessary
 * what behavior the revised wording establishes
 * which other documents are affected
+* what implementation consequences follow
 
 Do not silently rewrite requirements merely to simplify implementation.
 
----
-
-## 19. Completion Report
-
-When reporting completed development work, summarize:
-
-1. What changed.
-2. Which specifications or interfaces were affected.
-3. Which tests and verification checks were run.
-4. The relevant results.
-5. Any remaining limitations or uncertainty.
-
-Do not claim a requirement is satisfied without corresponding evidence.
-
-Do not claim an end-to-end behavior is verified merely because the code compiles.
+Do not treat the current implementation as proof that the specification should be changed.
 
 ---
 
-## 20. General Rule
+## 26. Documentation State Boundary
+
+The formal specification documents describe the target system and required behavior.
+
+They should not be used as implementation progress trackers.
+
+Do not add:
+
+```text
+current status
+implemented
+not implemented
+partial
+Stage X completed
+latest test result
+current commit
+temporary workaround
+```
+
+to stable design documents merely for progress tracking.
+
+Implementation progress belongs in:
+
+```text
+IMPLEMENTATION_STATUS.md
+```
+
+Historical implementation details belong in:
+
+```text
+history/
+```
+
+Temporary implementation instructions belong in:
+
+```text
+active development conversation
+```
+
+`README.md` may describe the project's target architecture and purpose, but should not become an implementation progress tracker.
+
+When implementation reality differs from the specification, do not modify the specification merely to make it match the current implementation.
+
+Record the implementation gap in:
+
+```text
+IMPLEMENTATION_STATUS.md
+```
+
+If the specification itself is found to be ambiguous, contradictory, incomplete, or architecturally incorrect, handle that as a specification change according to Section 25.
+
+---
+
+## 27. Roadmap Discipline
+
+`docs/08_AGENT_CORE_ROADMAP.md` is a long-term dependency and capability map.
+
+It is not a mandatory linear implementation schedule.
+
+Do not interpret roadmap items as automatically approved coding tasks.
+
+A roadmap item becomes an implementation increment only after:
+
+```text
+design is sufficiently defined
+dependencies are understood
+scope is bounded
+non-goals are explicit
+acceptance criteria are defined
+implementation boundary is approved
+```
+
+Do not assign arbitrary Stage numbers merely because a roadmap item exists.
+
+Do not implement future roadmap capabilities opportunistically during an unrelated increment.
+
+Runtime capability branches and Agent Core semantic evolution may progress independently where the architecture permits it.
+
+---
+
+## 28. Current Agent Core Direction
+
+The current stable post-cycle Agent Core design begins with:
+
+```text
+Observation Store
+        +
+Context Compiler
+```
+
+The Observation Store is the authoritative in-process observation history.
+
+The Context Compiler is responsible for producing an appropriate semantic context representation for Agent decision making.
+
+This increment is followed conceptually by broader Agent Core capabilities such as:
+
+```text
+Evidence / Knowledge Semantics
+        ↓
+Hypothesis Lifecycle
+        ↓
+Progress Detection
+        ↓
+Loop Detection
+        ↓
+Adaptive Recovery
+        ↓
+Stronger Goal Verification
+```
+
+These are architectural directions, not automatic implementation instructions.
+
+The detailed current design is defined in:
+
+```text
+docs/07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md
+```
+
+The broader dependency map is defined in:
+
+```text
+docs/08_AGENT_CORE_ROADMAP.md
+```
+
+Do not independently redefine these boundaries during implementation.
+
+---
+
+## 29. General Agent Behavior
 
 The objective is not to make the current test cases pass through special handling.
 
 The objective is to build a general Agent that can:
 
-```
+```text
 observe
-  ->
+    ->
 understand
-  ->
+    ->
 hypothesize
-  ->
+    ->
 decide
-  ->
+    ->
 act
-  ->
+    ->
 observe result
-  ->
+    ->
 evaluate
-  ->
+    ->
 revise
-  ->
+    ->
 act again
-  ->
+    ->
 verify
-  ->
+    ->
 finish
 ```
 
@@ -598,32 +1200,60 @@ The implementation may realize this loop differently.
 
 The behavior must remain general.
 
-## Documentation State Boundary
+Do not encode a particular task sequence into Agent Core merely because it makes a demonstration easier.
 
-The formal specification documents describe the target system and its required behavior.
+---
 
-They should not be used as implementation progress trackers.
+## 30. Completion Report
 
-Do not add "current status", "implemented", "not implemented", "partial", "Stage X completed", or similar progress information to:
+When reporting completed development work, summarize:
 
-- `docs/01_REQUIREMENTS.md`
-- `docs/02_CONSTRUCTION.md`
-- `docs/03_INTERFACES.md`
-- `docs/04_ACCEPTANCE_TESTS.md`
-- `docs/05_TEST_PLAN.md`
+1. What changed.
+2. Which implementation boundary was completed.
+3. Which specifications or interfaces were affected.
+4. Which tests and verification checks were run.
+5. The relevant results.
+6. Whether the implementation matches the applicable stable design.
+7. Whether `IMPLEMENTATION_STATUS.md` was updated.
+8. Any remaining limitations or uncertainty.
+9. Any discovered design conflict that requires separate approval.
 
-Implementation progress belongs in:
+Do not claim a requirement is satisfied without corresponding evidence.
 
-- `IMPLEMENTATION_STATUS.md`
+Do not claim an end-to-end behavior is verified merely because the code compiles.
 
-Historical implementation details belong in:
+Do not claim a design document was updated unless the design itself actually changed.
 
-- `history/`
+---
 
-`README.md` may describe the project's target architecture and purpose, but should not become an implementation progress tracker.
+## 31. Final Rule
 
-When implementation reality differs from the specification, do not modify the specification merely to make it match the current implementation.
+When in doubt, preserve the distinction:
 
-Record the implementation gap in `IMPLEMENTATION_STATUS.md`.
+```text
+Stable Design
+    =
+what the system is intended to be
 
-If the specification itself is found to be ambiguous, contradictory, incomplete, or architecturally incorrect, handle that as a specification change according to Section 18.
+Current Implementation
+    =
+what the repository currently implements
+
+History
+    =
+what happened previously
+
+Temporary Implementation Context
+    =
+what is being worked on now
+```
+
+The coding agent's job is not to make these four categories look identical.
+
+The coding agent's job is to make the implementation converge toward the approved stable design while preserving a truthful record of current state and history.
+
+Never silently change the target architecture to match an implementation shortcut.
+Never silently expand an approved implementation boundary.
+Never treat a temporary implementation detail as a permanent architectural rule.
+Never treat successful compilation as proof of behavioral correctness.
+Never hide uncertainty or design conflicts.
