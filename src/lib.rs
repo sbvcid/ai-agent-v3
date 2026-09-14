@@ -13,11 +13,11 @@ pub use core::{
     EvidenceRelation, ExecutionState, FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal,
     InMemoryKnowledgeStore, InMemoryObservationStore, InterpretationError, JsonFileCheckpointStore,
     KnowledgeClaim, KnowledgeClaimStatus, KnowledgeState, KnowledgeStore, KnowledgeStoreError,
-    KnowledgeStoreSemanticUpdater, LoopError, LoopEvent, LoopStepOutcome, MockLlm, Observation,
-    ObservationKind, ObservationStore, ObservationStoreError, NoOpSemanticUpdateProducer,
-    ProcessSpec, ProviderDecisionSource, Runtime, SemanticUpdate, SemanticUpdateError,
-    SemanticUpdateProducer, SemanticUpdater, StateCheckpoint, Unknown, ValidationError,
-    VerificationState,
+    KnowledgeStoreSemanticUpdater, LoopError, LoopEvent, LoopStepOutcome, MockLlm,
+    NoOpSemanticUpdateProducer, Observation, ObservationKind, ObservationStore,
+    ObservationStoreError, ProcessSpec, ProviderDecisionSource, Runtime, SemanticUpdate,
+    SemanticUpdateError, SemanticUpdateProducer, SemanticUpdater, StateCheckpoint, Unknown,
+    ValidationError, VerificationState,
 };
 pub use provider::{
     ollama::OllamaProvider, LlmProvider, ProviderError, ProviderMessage, ProviderRequest,
