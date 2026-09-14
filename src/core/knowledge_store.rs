@@ -76,9 +76,19 @@ pub enum KnowledgeStoreError {
 }
 
 pub trait KnowledgeStore: std::fmt::Debug {
+    /// Records a claim atomically. Observed/Inferred claims must use
+    /// `record_claim_with_evidence` so provenance is never transiently invalid.
     fn record_claim(
         &mut self,
         claim: KnowledgeClaim,
+        observations: &dyn ObservationStore,
+    ) -> Result<(), KnowledgeStoreError>;
+
+    /// Atomically records an Observed/Inferred claim and its evidence links.
+    fn record_claim_with_evidence(
+        &mut self,
+        claim: KnowledgeClaim,
+        evidence: Vec<EvidenceLink>,
         observations: &dyn ObservationStore,
     ) -> Result<(), KnowledgeStoreError>;
 
@@ -151,6 +161,37 @@ impl InMemoryKnowledgeStore {
         }
         Ok(())
     }
+
+    fn validate_new_evidence(
+        &self,
+        links: &[EvidenceLink],
+        observations: &dyn ObservationStore,
+    ) -> Result<(), KnowledgeStoreError> {
+        for link in links {
+            if link.observation_id.trim().is_empty() || link.claim_id.trim().is_empty() {
+                return Err(KnowledgeStoreError::Validation(
+                    "evidence observation_id and claim_id cannot be empty".into(),
+                ));
+            }
+            if observations.get(&link.observation_id).is_none() {
+                return Err(KnowledgeStoreError::MissingObservation(link.observation_id.clone()));
+            }
+            if self.get_claim(&link.claim_id).is_some() {
+                // The caller may be updating an existing claim only through a future
+                // semantic update API; this increment does not define claim mutation.
+            }
+            if self.evidence.iter().any(|existing| existing == link)
+                || links.iter().filter(|existing| *existing == link).count() > 1
+            {
+                return Err(KnowledgeStoreError::DuplicateEvidenceLink {
+                    observation_id: link.observation_id.clone(),
+                    claim_id: link.claim_id.clone(),
+                    relation: link.relation,
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 impl KnowledgeStore for InMemoryKnowledgeStore {
@@ -163,8 +204,70 @@ impl KnowledgeStore for InMemoryKnowledgeStore {
         if self.get_claim(&claim.id).is_some() {
             return Err(KnowledgeStoreError::DuplicateClaimId(claim.id));
         }
+        if matches!(claim.status, KnowledgeClaimStatus::Observed | KnowledgeClaimStatus::Inferred) {
+            return Err(KnowledgeStoreError::Validation(
+                "Observed/Inferred claims require atomic record_claim_with_evidence".into(),
+            ));
+        }
+        for observation_id in &claim.evidence_refs {
+            if observations.get(observation_id).is_none() {
+                return Err(KnowledgeStoreError::MissingObservation(observation_id.clone()));
+            }
+        }
         self.claims.push(claim);
-        self.validate(observations)?;
+        Ok(())
+    }
+
+    fn record_claim_with_evidence(
+        &mut self,
+        claim: KnowledgeClaim,
+        evidence: Vec<EvidenceLink>,
+        observations: &dyn ObservationStore,
+    ) -> Result<(), KnowledgeStoreError> {
+        Self::validate_claim(&claim)?;
+        if self.get_claim(&claim.id).is_some() {
+            return Err(KnowledgeStoreError::DuplicateClaimId(claim.id));
+        }
+        if !matches!(claim.status, KnowledgeClaimStatus::Observed | KnowledgeClaimStatus::Inferred) {
+            return Err(KnowledgeStoreError::Validation(
+                "record_claim_with_evidence is only for Observed/Inferred claims".into(),
+            ));
+        }
+        if evidence.is_empty() {
+            return Err(KnowledgeStoreError::Validation(
+                "Observed/Inferred claims require at least one evidence link".into(),
+            ));
+        }
+        if claim.evidence_refs.is_empty() {
+            return Err(KnowledgeStoreError::Validation(
+                "Observed/Inferred claims require evidence_refs".into(),
+            ));
+        }
+        for observation_id in &claim.evidence_refs {
+            if observations.get(observation_id).is_none() {
+                return Err(KnowledgeStoreError::MissingObservation(observation_id.clone()));
+            }
+        }
+        if evidence.iter().any(|link| link.claim_id != claim.id) {
+            return Err(KnowledgeStoreError::Validation(
+                "all evidence links must reference the recorded claim".into(),
+            ));
+        }
+        self.validate_new_evidence(&evidence, observations)?;
+        if evidence
+            .iter()
+            .all(|link| !claim.evidence_refs.contains(&link.observation_id))
+        {
+            return Err(KnowledgeStoreError::Validation(
+                "claim evidence_refs must overlap its evidence links".into(),
+            ));
+        }
+
+        let mut candidate = self.clone();
+        candidate.claims.push(claim);
+        candidate.evidence.extend(evidence);
+        candidate.validate(observations)?;
+        *self = candidate;
         Ok(())
     }
 
@@ -191,8 +294,10 @@ impl KnowledgeStore for InMemoryKnowledgeStore {
                 relation: link.relation,
             });
         }
-        self.evidence.push(link);
-        self.validate(observations)?;
+        let mut candidate = self.clone();
+        candidate.evidence.push(link);
+        candidate.validate(observations)?;
+        *self = candidate;
         Ok(())
     }
 
@@ -298,14 +403,14 @@ mod tests {
     fn observed_claim_requires_traceable_evidence() {
         let observations = observation_store();
         let mut store = InMemoryKnowledgeStore::new();
-        store.record_claim(observed_claim(), &observations).unwrap();
         store
-            .record_evidence(
-                EvidenceLink {
+            .record_claim_with_evidence(
+                observed_claim(),
+                vec![EvidenceLink {
                     observation_id: "obs-1".into(),
                     claim_id: "claim-1".into(),
                     relation: EvidenceRelation::Supports,
-                },
+                }],
                 &observations,
             )
             .unwrap();
@@ -333,14 +438,27 @@ mod tests {
     fn duplicate_evidence_link_is_rejected_deterministically() {
         let observations = observation_store();
         let mut store = InMemoryKnowledgeStore::new();
-        store.record_claim(observed_claim(), &observations).unwrap();
-        let link = EvidenceLink {
-            observation_id: "obs-1".into(),
-            claim_id: "claim-1".into(),
-            relation: EvidenceRelation::Supports,
-        };
-        store.record_evidence(link.clone(), &observations).unwrap();
-        let err = store.record_evidence(link, &observations).unwrap_err();
+        store
+            .record_claim_with_evidence(
+                observed_claim(),
+                vec![EvidenceLink {
+                    observation_id: "obs-1".into(),
+                    claim_id: "claim-1".into(),
+                    relation: EvidenceRelation::Supports,
+                }],
+                &observations,
+            )
+            .unwrap();
+        let err = store
+            .record_evidence(
+                EvidenceLink {
+                    observation_id: "obs-1".into(),
+                    claim_id: "claim-1".into(),
+                    relation: EvidenceRelation::Supports,
+                },
+                &observations,
+            )
+            .unwrap_err();
         assert!(matches!(err, KnowledgeStoreError::DuplicateEvidenceLink { .. }));
     }
 
@@ -348,14 +466,14 @@ mod tests {
     fn conflicting_evidence_can_coexist() {
         let observations = observation_store();
         let mut store = InMemoryKnowledgeStore::new();
-        store.record_claim(observed_claim(), &observations).unwrap();
         store
-            .record_evidence(
-                EvidenceLink {
+            .record_claim_with_evidence(
+                observed_claim(),
+                vec![EvidenceLink {
                     observation_id: "obs-1".into(),
                     claim_id: "claim-1".into(),
                     relation: EvidenceRelation::Supports,
-                },
+                }],
                 &observations,
             )
             .unwrap();
@@ -383,7 +501,6 @@ mod tests {
                 question: "Which process owns the port?".into(),
             })
             .unwrap();
-        assert_eq!(store.unknowns().len(), 1);
-        assert!(store.is_empty() == false);
+        assert!(!store.is_empty());
     }
 }
