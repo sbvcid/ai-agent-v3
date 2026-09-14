@@ -14,7 +14,7 @@
 5. docs/README.md
 ```
 
-以上 5 份是唯一的「必讀入口文件」。
+以上 5 份是唯一的「必讀入口文件」，也是目前治理基線的固定入口集合。
 
 第 1–5 步完成後，才由 `docs/README.md` 判斷本次任務需要哪些其他文件。
 
@@ -35,6 +35,8 @@ history/ 全部歷史
 git status
 git log --oneline --decorate -5
 ```
+
+固定入口文件是治理基線。未來新增 stable document 或調整 stable-document inventory 時，不因文件數量增加而例行修改這 5 份入口文件；只有 startup governance、文件責任或工作流程本身發生真正的長期變更時，才需要重新對齊它們。
 
 ## 2. 文件責任只有四層
 
@@ -72,8 +74,10 @@ active conversation
 - `DEVELOPMENT_WORKFLOW.md` 不負責描述目前實作細節。
 - `IMPLEMENTATION_STATUS.md` 不負責定義 target architecture。
 - `README.md` 不負責定義 implementation status。
-- `docs/README.md` 只負責導航，不重新定義架構。
+- `docs/README.md` 只負責 stable-document inventory、導航與 task-specific reading selection，不重新定義架構。
 - `history/` 不負責提供目前工作指令。
+
+目前 stable documents 的詳細 inventory 與閱讀依賴由 `docs/README.md` 維護；`AGENTS.md` 與 `README.md` 所列出的 `docs/01~08` 是治理基線中的目前 stable-document baseline，不是要求固定入口文件在未來逐次同步新增文件的永久清單。
 
 ## 3. 「必讀」與「目前需要讀」必須分開
 
