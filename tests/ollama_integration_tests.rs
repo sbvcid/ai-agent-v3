@@ -155,6 +155,9 @@ fn test_real_ollama_closed_loop() {
         Err(LoopError::ObservationStore(err)) => {
             panic!("Observation store error: {}", err);
         }
+        Err(LoopError::SemanticUpdate(err)) => {
+            panic!("Semantic update error: {}", err);
+        }
     }
 
     println!("✓ Real Ollama integration test completed successfully");
