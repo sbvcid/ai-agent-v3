@@ -282,11 +282,8 @@ impl AgentLoop {
             return Ok(());
         };
 
-        self.semantic_updater.apply(
-            update,
-            &self.observation_store,
-            &mut self.knowledge_store,
-        )?;
+        self.semantic_updater
+            .apply(update, &self.observation_store, &mut self.knowledge_store)?;
         Ok(())
     }
 
