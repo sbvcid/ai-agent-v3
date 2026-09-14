@@ -258,7 +258,7 @@ mod tests {
                 _observation_store: &dyn ObservationStore,
                 knowledge_store: &dyn KnowledgeStore,
             ) -> Result<AgentDecision, DecisionSourceError> {
-                self.seen_knowledge_len = Some(knowledge_store.len());
+                self.seen_knowledge_len = Some(knowledge_store.unknowns().len());
                 Ok(AgentDecision::observe("inspect knowledge store"))
             }
         }
@@ -285,7 +285,7 @@ mod tests {
 
         assert_eq!(outcome, LoopStepOutcome::Continue);
         assert_eq!(source.seen_knowledge_len, Some(1));
-        assert_eq!(agent_loop.knowledge_store().len(), 1);
+        assert_eq!(agent_loop.knowledge_store().unknowns().len(), 1);
     }
 
     #[test]
