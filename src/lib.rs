@@ -10,10 +10,11 @@ pub use core::{
     interpret, Action, ActionResult, ActionType, AgentDecision, AgentLoop, AgentState,
     CheckpointError, CheckpointStore, CompiledContext, ContextCompileError, ContextCompiler,
     DecisionSource, DecisionSourceError, DefaultContextCompiler, EventTrace, ExecutionState,
-    FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal, InMemoryObservationStore,
-    InterpretationError, JsonFileCheckpointStore, KnowledgeState, LoopError, LoopEvent,
-    LoopStepOutcome, MockLlm, Observation, ObservationKind, ObservationStore,
-    ObservationStoreError, ProcessSpec, ProviderDecisionSource, Runtime, StateCheckpoint,
+    EvidenceLink, EvidenceRelation, FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal,
+    InMemoryKnowledgeStore, InMemoryObservationStore, InterpretationError, JsonFileCheckpointStore,
+    KnowledgeClaim, KnowledgeClaimStatus, KnowledgeState, KnowledgeStore, KnowledgeStoreError,
+    LoopError, LoopEvent, LoopStepOutcome, MockLlm, Observation, ObservationKind, ObservationStore,
+    ObservationStoreError, ProcessSpec, ProviderDecisionSource, Runtime, StateCheckpoint, Unknown,
     ValidationError, VerificationState,
 };
 pub use provider::{
