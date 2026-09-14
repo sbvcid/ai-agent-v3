@@ -8,10 +8,12 @@ pub mod runtime;
 
 pub use core::{
     interpret, Action, ActionResult, ActionType, AgentDecision, AgentLoop, AgentState,
-    CheckpointError, CheckpointStore, DecisionSource, DecisionSourceError, EventTrace,
-    ExecutionState, FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal, InterpretationError,
-    JsonFileCheckpointStore, KnowledgeState, LoopError, LoopEvent, LoopStepOutcome, MockLlm,
-    Observation, ObservationKind, ProcessSpec, ProviderDecisionSource, Runtime, StateCheckpoint,
+    CheckpointError, CheckpointStore, CompiledContext, ContextCompileError, ContextCompiler,
+    DecisionSource, DecisionSourceError, DefaultContextCompiler, EventTrace, ExecutionState,
+    FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal, InMemoryObservationStore,
+    InterpretationError, JsonFileCheckpointStore, KnowledgeState, LoopError, LoopEvent,
+    LoopStepOutcome, MockLlm, Observation, ObservationKind, ObservationStore,
+    ObservationStoreError, ProcessSpec, ProviderDecisionSource, Runtime, StateCheckpoint,
     ValidationError, VerificationState,
 };
 pub use provider::{

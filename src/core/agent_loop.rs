@@ -28,6 +28,9 @@
 
 use crate::core::checkpoint::StateCheckpoint;
 use crate::core::decision_source::{DecisionSource, DecisionSourceError};
+use crate::core::observation_store::{
+    InMemoryObservationStore, ObservationStore, ObservationStoreError,
+};
 use crate::core::runtime::Runtime;
 use crate::core::types::{
     Action, ActionResult, AgentDecision, AgentState, ExecutionState, FinalTaskStatus, Observation,
@@ -47,6 +50,9 @@ pub enum LoopError {
 
     #[error("AgentState validation failed: {0}")]
     Validation(#[from] ValidationError),
+
+    #[error("Observation store error: {0}")]
+    ObservationStore(#[from] ObservationStoreError),
 
     #[error("Cannot step loop: task already finalized with status: {0:?}")]
     AlreadyFinished(FinalTaskStatus),
@@ -131,6 +137,7 @@ pub enum LoopStepOutcome {
 /// Minimal deterministic Agent Loop.
 pub struct AgentLoop {
     state: AgentState,
+    observation_store: InMemoryObservationStore,
     trace: EventTrace,
     max_steps: usize,
     current_step: usize,
@@ -139,8 +146,15 @@ pub struct AgentLoop {
 impl AgentLoop {
     /// Create a new AgentLoop with default step limit (50).
     pub fn new(state: AgentState) -> Self {
+        let mut observation_store = InMemoryObservationStore::new();
+        for obs in &state.recent_observations {
+            observation_store
+                .record(obs.clone())
+                .expect("Failed to record observation into authoritative store");
+        }
         Self {
             state,
+            observation_store,
             trace: EventTrace::new(),
             max_steps: 50,
             current_step: 0,
@@ -151,12 +165,29 @@ impl AgentLoop {
     ///
     /// Per `docs/02` §81, Checkpoint preserves AgentState, Goal, Knowledge States, and Event Cursor.
     pub fn from_checkpoint(checkpoint: &StateCheckpoint) -> Self {
+        let mut observation_store = InMemoryObservationStore::new();
+        for obs in &checkpoint.state.recent_observations {
+            observation_store
+                .record(obs.clone())
+                .expect("Failed to record observation into authoritative store from checkpoint");
+        }
         Self {
             state: checkpoint.state.clone(),
+            observation_store,
             trace: EventTrace::new(),
             max_steps: 50,
             current_step: checkpoint.step_index as usize,
         }
+    }
+
+    /// Immutable reference to the ObservationStore.
+    pub fn observation_store(&self) -> &InMemoryObservationStore {
+        &self.observation_store
+    }
+
+    /// Mutable reference to the ObservationStore.
+    pub fn observation_store_mut(&mut self) -> &mut InMemoryObservationStore {
+        &mut self.observation_store
     }
 
     /// Record verification evidence and mark the goal as Verified.
@@ -214,7 +245,8 @@ impl AgentLoop {
         self.current_step += 1;
 
         // 1. Decision acquisition via DecisionSource
-        let decision = decision_source.next_decision(&self.state)?;
+        let decision =
+            decision_source.next_decision_with_store(&self.state, &self.observation_store)?;
         self.trace
             .push(LoopEvent::DecisionProduced(decision.clone()));
 
@@ -239,7 +271,8 @@ impl AgentLoop {
                 self.trace
                     .push(LoopEvent::ObservationProduced(observation.clone()));
 
-                // 5. Update state
+                // 5. Update store and state
+                self.observation_store.record(observation.clone())?;
                 self.state.record_action(action);
                 self.state.record_observation(observation);
                 self.trace.push(LoopEvent::StateUpdated);
@@ -254,6 +287,7 @@ impl AgentLoop {
                 self.trace
                     .push(LoopEvent::ObservationProduced(observation.clone()));
 
+                self.observation_store.record(observation.clone())?;
                 self.state.record_observation(observation);
                 self.trace.push(LoopEvent::StateUpdated);
 

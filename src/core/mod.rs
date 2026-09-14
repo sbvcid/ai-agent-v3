@@ -1,7 +1,9 @@
 pub mod agent_loop;
 pub mod checkpoint;
+pub mod context_compiler;
 pub mod decision_source;
 pub mod interpreter;
+pub mod observation_store;
 pub mod process;
 #[cfg(test)]
 pub mod process_tests;
@@ -11,8 +13,12 @@ pub mod types;
 
 pub use agent_loop::{AgentLoop, EventTrace, LoopError, LoopEvent, LoopStepOutcome};
 pub use checkpoint::{CheckpointError, CheckpointStore, JsonFileCheckpointStore, StateCheckpoint};
+pub use context_compiler::{
+    CompiledContext, ContextCompileError, ContextCompiler, DefaultContextCompiler,
+};
 pub use decision_source::{DecisionSource, DecisionSourceError, ProviderDecisionSource};
 pub use interpreter::{interpret, InterpretationError};
+pub use observation_store::{InMemoryObservationStore, ObservationStore, ObservationStoreError};
 pub use process::ProcessSpec;
 pub use runtime::Runtime;
 pub use test_doubles::{FakeLlmProvider, FakeRuntime, MockLlm};

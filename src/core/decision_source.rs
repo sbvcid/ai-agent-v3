@@ -3,7 +3,9 @@
 //! Defines the [`DecisionSource`] trait decoupling [`AgentLoop`] from specific
 //! LLM provider implementations (such as `MockLlm` or future provider adapters).
 
+use crate::core::context_compiler::{CompiledContext, ContextCompiler, DefaultContextCompiler};
 use crate::core::interpreter::interpret;
+use crate::core::observation_store::{InMemoryObservationStore, ObservationStore};
 use crate::core::types::{AgentDecision, AgentState};
 use crate::provider::{LlmProvider, ProviderMessage, ProviderRequest};
 use thiserror::Error;
@@ -30,6 +32,14 @@ pub enum DecisionSourceError {
 /// given the current working state of the agent.
 pub trait DecisionSource {
     fn next_decision(&mut self, state: &AgentState) -> Result<AgentDecision, DecisionSourceError>;
+
+    fn next_decision_with_store(
+        &mut self,
+        state: &AgentState,
+        _store: &dyn ObservationStore,
+    ) -> Result<AgentDecision, DecisionSourceError> {
+        self.next_decision(state)
+    }
 }
 
 /// Provider-backed DecisionSource connecting an [`LlmProvider`] and the core interpreter.
@@ -38,6 +48,7 @@ where
     P: LlmProvider,
 {
     provider: P,
+    compiler: DefaultContextCompiler,
 }
 
 impl<P> ProviderDecisionSource<P>
@@ -45,7 +56,10 @@ where
     P: LlmProvider,
 {
     pub fn new(provider: P) -> Self {
-        Self { provider }
+        Self {
+            provider,
+            compiler: DefaultContextCompiler::default(),
+        }
     }
 
     pub fn provider(&self) -> &P {
@@ -62,7 +76,25 @@ where
     P: LlmProvider,
 {
     fn next_decision(&mut self, state: &AgentState) -> Result<AgentDecision, DecisionSourceError> {
-        let request = ProviderRequest::from_agent_state(state);
+        let mut temp_store = InMemoryObservationStore::new();
+        for obs in &state.recent_observations {
+            temp_store
+                .record(obs.clone())
+                .map_err(|e| DecisionSourceError::Other(e.to_string()))?;
+        }
+        self.next_decision_with_store(state, &temp_store)
+    }
+
+    fn next_decision_with_store(
+        &mut self,
+        state: &AgentState,
+        store: &dyn ObservationStore,
+    ) -> Result<AgentDecision, DecisionSourceError> {
+        let compiled = self
+            .compiler
+            .compile(state, store)
+            .map_err(|e| DecisionSourceError::Other(e.to_string()))?;
+        let request = ProviderRequest::from_compiled_context(&compiled);
         let response = self
             .provider
             .chat(&request)
@@ -74,25 +106,37 @@ where
 }
 
 impl ProviderRequest {
-    /// Construct a provider-neutral chat completion request from the current [`AgentState`].
-    pub fn from_agent_state(state: &AgentState) -> Self {
-        let mut content = format!("Goal: {}\n", state.goal.description);
-        if !state.understanding.is_empty() {
-            content.push_str(&format!("Understanding: {}\n", state.understanding));
+    /// Construct a provider-neutral chat completion request from a [`CompiledContext`].
+    pub fn from_compiled_context(compiled: &CompiledContext) -> Self {
+        let mut content = format!("Goal: {}\n", compiled.goal.description);
+        if !compiled.understanding.is_empty() {
+            content.push_str(&format!("Understanding: {}\n", compiled.understanding));
         }
-        if !state.recent_observations.is_empty() {
+        if !compiled.observations.is_empty() {
             content.push_str("Recent Observations:\n");
-            for obs in &state.recent_observations {
+            for obs in &compiled.observations {
                 content.push_str(&format!("- [{:?}] {}\n", obs.kind, obs.summary));
             }
         }
-        if !state.recent_actions.is_empty() {
+        if !compiled.recent_actions.is_empty() {
             content.push_str("Recent Actions:\n");
-            for action in &state.recent_actions {
+            for action in &compiled.recent_actions {
                 content.push_str(&format!(
                     "- ID: {}, Type: {:?}, Intent: {:?}\n",
                     action.id, action.action_type, action.intent
                 ));
+            }
+        }
+        if !compiled.unknowns.is_empty() {
+            content.push_str("Unknowns:\n");
+            for unk in &compiled.unknowns {
+                content.push_str(&format!("- {}\n", unk));
+            }
+        }
+        if !compiled.active_problems.is_empty() {
+            content.push_str("Active Problems:\n");
+            for prob in &compiled.active_problems {
+                content.push_str(&format!("- {}\n", prob));
             }
         }
         Self {
@@ -265,18 +309,24 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_request_from_agent_state() {
+    fn test_provider_request_from_compiled_context() {
         let goal = Goal::new("Refactor codebase");
         let mut state = AgentState::new(goal);
         state.understanding = "Code is modular".to_string();
         state.record_action(Action::new("act-1", ActionType::Execute).with_intent("check lint"));
-        state.record_observation(Observation::new(
-            "obs-1",
-            ObservationKind::Environment,
-            "clean status",
-        ));
 
-        let req = ProviderRequest::from_agent_state(&state);
+        let mut store = InMemoryObservationStore::new();
+        store
+            .record(Observation::new(
+                "obs-1",
+                ObservationKind::Environment,
+                "clean status",
+            ))
+            .unwrap();
+
+        let compiler = DefaultContextCompiler::default();
+        let compiled = compiler.compile(&state, &store).unwrap();
+        let req = ProviderRequest::from_compiled_context(&compiled);
         assert!(!req.messages.is_empty());
         match &req.messages[0] {
             ProviderMessage::User(text) => {
@@ -287,6 +337,43 @@ mod tests {
             }
             other => panic!("Expected User message, got: {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_compiler_and_provider_decision_source_accesses_authoritative_store_absent_from_state() {
+        let goal = Goal::new("Test authoritative store vs state");
+        let state = AgentState::new(goal); // recent_observations is empty
+
+        let mut store = InMemoryObservationStore::new();
+        let obs = Observation::new(
+            "obs-auth",
+            ObservationKind::Environment,
+            "authoritative observation",
+        );
+        store.record(obs.clone()).unwrap();
+
+        let compiler = DefaultContextCompiler::default();
+        let compiled = compiler.compile(&state, &store).unwrap();
+        assert_eq!(compiled.observations, vec![obs]);
+        assert!(state.recent_observations.is_empty());
+
+        let response = ProviderResponse {
+            content: String::new(),
+            tool_calls: vec![crate::provider::ProviderToolCall {
+                id: "tc-1".to_string(),
+                name: "execute_process".to_string(),
+                arguments: serde_json::json!({ "executable": "echo", "args": ["hello"] }),
+            }],
+            finish_reason: None,
+        };
+        let provider =
+            crate::core::test_doubles::FakeLlmProvider::with_responses(vec![Ok(response)]);
+        let mut source = ProviderDecisionSource::new(provider);
+
+        let decision = source
+            .next_decision_with_store(&state, &store)
+            .expect("should succeed");
+        assert!(matches!(decision, AgentDecision::Act { .. }));
     }
 
     #[test]

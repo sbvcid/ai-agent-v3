@@ -4,9 +4,15 @@
 
 **Implementation Cycle 1: COMPLETED through Stage 9.4**
 
+**Post-Cycle Increment: Observation Store + Context Compiler — COMPLETED**
+
 The first implementation cycle established the canonical Agent Core domain model, deterministic closed loop, checkpoint persistence, Filesystem Runtime foundation, Process Runtime foundation, LLM Provider abstraction, Ollama Provider, provider decision interpretation, real-provider closed-loop integration, and the release gate.
 
-The repository is now in the design-and-selection phase for the first post-cycle Agent Core increment. No post-cycle implementation Stage has been approved or started.
+The first post-cycle Agent Core increment (**Observation Store + Context Compiler**) has been successfully implemented, integrating:
+- `ObservationStore` abstraction and `InMemoryObservationStore` implementation;
+- `ContextCompiler` abstraction and `DefaultContextCompiler` implementation;
+- `AgentLoop` integration with authoritative observation storage;
+- `ProviderDecisionSource` integration using `ContextCompiler` and `CompiledContext`.
 
 **Stage 10 is intentionally not defined.** No future stage should be inferred from this document or from the roadmap.
 

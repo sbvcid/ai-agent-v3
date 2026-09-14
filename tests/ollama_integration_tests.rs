@@ -152,6 +152,9 @@ fn test_real_ollama_closed_loop() {
         Err(LoopError::UnverifiedGoal(_)) => {
             panic!("Unverified goal on first step");
         }
+        Err(LoopError::ObservationStore(err)) => {
+            panic!("Observation store error: {}", err);
+        }
     }
 
     println!("✓ Real Ollama integration test completed successfully");
