@@ -10,10 +10,12 @@
 Implementation Cycle 1: COMPLETED through Stage 9.4
 Post-Cycle Increment: Observation Store + Context Compiler — COMPLETED
 B1 — Knowledge Semantic Foundation: VERIFIED / RELEASE GATE PASSED
-Current overall state: deterministic closed-loop foundation + observation/context foundation + first Evidence/Knowledge semantic foundation
+B2-A — Ownership / Data Path: VERIFIED / RELEASE GATE PASSED
+B2-B — Context / Provider Integration: VERIFIED / RELEASE GATE PASSED
+Current overall state: deterministic closed-loop foundation + observation/context foundation + Evidence/Knowledge semantic foundation + Knowledge-aware provider context path
 ```
 
-**Stage 10 尚未定義。** B1 是經批准的 Agent Core semantic implementation increment，不自動建立 Stage 10。
+**Stage 10 尚未定義。** B1 與 B2 是經批准的 Agent Core semantic implementation increments，不自動建立 Stage 10。
 
 目前 repository 的真實狀態仍必須以 source code、tests 與實際驗證結果確認。
 
@@ -24,7 +26,9 @@ Repository: sbvcid/ai-agent-v3
 Branch: master
 Latest documentation checkpoint: this commit
 Latest B1 implementation commit: 6f86cdce
-Latest B1 verification status: VERIFIED / RELEASE GATE PASSED
+Latest B2-A implementation commits: 474d2b02, 877fb422, 039e6a24
+Latest B2-B implementation commits: 5add9065, e49e64dc, 6b2e092
+Latest B2-B verification status: VERIFIED / RELEASE GATE PASSED
 ```
 
 以上 commit 是狀態導航資訊，不是永久真相。新的 AI session 必須先執行：
@@ -311,7 +315,144 @@ doc-tests: 0
 
 因此 B1 現在正式視為 **VERIFIED / RELEASE GATE PASSED**。
 
-## 6. Current Architecture Boundary
+## 6. B2 — Knowledge Context Integration
+
+B2 依 `docs/10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` 實作。B2 分為 B2-A、B2-B、B2-C；本次已完成 B2-A 與 B2-B，B2-C 尚未實作。
+
+### B2-A — Ownership / Data Path
+
+**VERIFIED / RELEASE GATE PASSED**
+
+完成：
+
+- `AgentLoop` 成為 authoritative `KnowledgeStore` owner。
+- `AgentLoop::knowledge_store()` / `knowledge_store_mut()` 提供 Core-level access boundary。
+- `from_checkpoint()` 不假裝已恢復 Knowledge persistence；B2-A 明確維持 KnowledgeStore 空狀態，直到後續 persistence boundary 被正式設計。
+- `DecisionSource` 增加 additive `next_decision_with_stores()` boundary。
+- `AgentLoop` 將 authoritative `ObservationStore` 與 `KnowledgeStore` 傳入 decision source。
+- `ProviderDecisionSource` 在 B2-A 建立接收 KnowledgeStore 的 boundary，但尚未消費 Knowledge context；實際 consumption 留在 B2-B。
+- 沒有新增 `AgentDecision::UpdateKnowledge`。
+- 沒有新增 Knowledge persistence。
+- Runtime 沒有被改造成 Knowledge engine。
+
+B2-A 驗證結果：
+
+```text
+cargo fmt --check                         PASS
+cargo clippy --all-targets --all-features -- -D warnings   PASS
+cargo check                               PASS
+cargo test                                PASS
+git diff --check                          PASS
+```
+
+測試結果：
+
+```text
+113 unit tests passed / 0 failed
+11 closed-loop tests passed / 0 failed
+11 filesystem/process integration tests passed / 0 failed
+Ollama real integration tests: 3 ignored
+Ollama provider tests: 2 passed
+process execution tests: 10 passed
+schema checkpoint tests: 6 passed
+test doubles tests: 6 passed
+doc-tests: 0
+```
+
+B2-A 的 Release Gate 已通過。
+
+### B2-B — Context / Provider Integration
+
+**VERIFIED / RELEASE GATE PASSED**
+
+完成：
+
+- `ProviderDecisionSource` 的正常 multi-store decision path 改用 `ContextCompiler::compile_with_knowledge()`。
+- `CompiledContext` 的 `KnowledgeClaim`、`EvidenceLink`、Knowledge `Unknown` 進入 `ProviderRequest`。
+- `ProviderRequest` 保持 provider-neutral semantic representation。
+- Provider adapter 仍負責 provider-specific wire formatting；未建立 provider-specific Knowledge model。
+- Provider request 可攜帶：
+
+```text
+knowledge_claims
+    KnowledgeClaim
+
+evidence_links
+    EvidenceLink
+
+knowledge_unknowns
+    Knowledge Unknown
+```
+
+- 加入 provider request semantic propagation tests。
+- 加入 `ProviderDecisionSource` consumption of authoritative KnowledgeStore test。
+- 更新 Ollama provider test fixture 以符合新的 provider-neutral request shape。
+- 未新增 `AgentDecision::UpdateKnowledge`。
+- 未新增 Knowledge persistence。
+- 未修改 Runtime semantic responsibility。
+- 未加入 confidence / probability / truth score 或 conflict resolution。
+
+B2-B Release Gate 驗證結果：
+
+```text
+cargo fmt --check                         PASS
+cargo clippy --all-targets --all-features -- -D warnings   PASS
+cargo check                               PASS
+cargo test                                PASS
+git diff --check                          PASS
+git status                                CLEAN
+```
+
+最終測試結果：
+
+```text
+115 unit tests passed / 0 failed
+11 closed-loop tests passed / 0 failed
+11 filesystem integration tests passed / 0 failed
+Ollama real integration tests: 3 ignored (requires running Ollama server/environment)
+Ollama provider tests: 2 passed
+process execution tests: 10 passed
+schema checkpoint tests: 6 passed
+test doubles tests: 6 passed
+doc-tests: 0
+```
+
+B2-B 最終 repository 狀態：
+
+```text
+Branch: master
+Working tree: clean
+Local branch: up to date with origin/master
+Latest formatting commit: 6b2e092
+```
+
+因此 B2-B 正式視為 **VERIFIED / RELEASE GATE PASSED**。
+
+### B2 邊界
+
+目前已建立的資料路徑：
+
+```text
+ActionResult / Observation
+        ↓
+ObservationStore
+        ↓
+KnowledgeStore
+        ↓
+ContextCompiler::compile_with_knowledge()
+        ↓
+CompiledContext
+        ↓
+ProviderRequest
+        ↓
+Provider Adapter
+```
+
+B2-A / B2-B 只建立 ownership 與 context propagation。它們沒有建立完整的 Knowledge reasoning producer、Hypothesis lifecycle、adaptive recovery 或其他 C–G 能力。
+
+B2-C 的 closed-loop semantic update boundary 尚未實作，也不能由本狀態文件自動視為已完成。
+
+## 7. Current Architecture Boundary
 
 目前高層資料流：
 
@@ -361,6 +502,9 @@ Knowledge Store
 Context Compiler
 = deterministic semantic context construction
 
+Provider Request
+= provider-neutral semantic request representation
+
 Provider Adapter
 = provider-specific wire formatting
 ```
@@ -371,13 +515,13 @@ Agent Core 不得依賴 Windows-specific implementation details。
 
 Provider 必須保持可替換。
 
-## 7. Remaining Long-Term Work
+## 8. Remaining Long-Term Work
 
-以下代表 **尚未完整實作的長期能力**，不是說第一版 Observation Store / Context Compiler / B1 foundation 不存在：
+以下代表 **尚未完整實作的長期能力**，不是說第一版 Observation Store / Context Compiler / B1 / B2-A / B2-B foundation 不存在：
 
 ### Agent Core semantic direction
 
-- richer Observation semantics
+- B2-C — Closed-loop Semantic Integration
 - Hypothesis lifecycle
 - Progress detection
 - Loop detection
@@ -396,7 +540,7 @@ Provider 必須保持可替換。
 
 這些項目不能自行變成新的 implementation Stage。是否進入 implementation，必須先有適用的 stable design、scope、non-goals、acceptance criteria、dependency understanding 與使用者批准。
 
-## 8. Known Documentation Rule
+## 9. Known Documentation Rule
 
 本 repository 對新 AI 的 startup reading 已固定為：
 
@@ -418,10 +562,10 @@ Stable design inventory 與 task-specific reading rules 的唯一導航來源是
 docs/README.md
 ```
 
-## 9. Current Next Step
+## 10. Current Next Step
 
-B1 已完成並通過 Release Gate。
+B2-A 與 B2-B 已完成並通過各自 Release Gate。
 
-目前沒有自動產生的下一個 implementation increment，也沒有 Stage 10。
+目前沒有自動開始 B2-C 的指令。Repository 應停在目前 verified baseline，等待下一個明確的 design / implementation 指令。
 
-Repository 應停在目前 verified baseline，等待下一個明確的 design / implementation 指令。
+B2-C 若要開始，必須依 `docs/10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` 的既定 scope 與 acceptance criteria，由使用者明確批准後才可實作。
