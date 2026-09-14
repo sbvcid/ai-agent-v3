@@ -11,7 +11,7 @@
 
 ### A. 每次新 AI Session 固定必讀
 
-以下 5 份文件是唯一的 repository startup reading set：
+以下 5 份文件是唯一的 repository startup reading set，也是目前治理基線的固定入口集合：
 
 ```text
 AGENTS.md
@@ -48,6 +48,8 @@ tests/ 全部 tests
 history/ 全部歷史
 ```
 
+固定入口文件是治理基線。未來新增 stable document 不需要為了更新 stable-document inventory 而修改 `AGENTS.md`、`README.md` 或 `DEVELOPMENT_WORKFLOW.md`；只有 startup governance、文件責任或工作流程本身發生真正的長期變更時，才需要重新對齊固定入口文件。
+
 ## 2. 文件層級與唯一責任
 
 ```text
@@ -79,7 +81,7 @@ docs/README.md
 → stable docs 的唯一導航入口
 
 docs/01~08
-→ stable requirements / design / interface / acceptance / test / roadmap
+→ 目前治理基線中的 stable requirements / design / interface / acceptance / test / roadmap
 
 history/
 → 歷史資料，不是目前工作指令
@@ -89,6 +91,8 @@ active conversation
 ```
 
 禁止讓兩份文件同時成為同一規則的 source of truth。
+
+`docs/README.md` 維護 stable-document inventory、唯一職責與 task-specific reading dependency；固定入口文件只描述治理基線與各自責任，不因 stable document 數量增加而逐次同步清單。
 
 ## 3. Stable Documents 現況
 
@@ -105,6 +109,8 @@ active conversation
 | `07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md` | Observation Store + Context Compiler 的穩定設計 | 涉及 Observation / Context 時 |
 | `08_AGENT_CORE_ROADMAP.md` | Agent Core 長期能力與依賴方向 | 判斷長期依賴與能力方向時 |
 
+以上是目前治理基線中的 stable-document baseline，不是永久且封閉的文件全集。
+
 **目前沒有 `09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md`。**
 
 Evidence / Knowledge B design 目前仍屬設計討論 / 待正式建立的 stable design，不能把不存在的文件當成已批准規格，也不能因為 roadmap 中有 B 就自行建立 implementation Stage。
@@ -115,6 +121,8 @@ Evidence / Knowledge B design 目前仍屬設計討論 / 待正式建立的 stab
 2. 定義它的唯一長期職責；
 3. 定義哪些 task 需要讀它；
 4. 確認它不重複既有文件。
+
+不需要同步修改 `AGENTS.md`、`README.md` 或 `DEVELOPMENT_WORKFLOW.md`，除非新增文件同時代表治理規則、文件責任或工作流程本身發生真正的長期變更。
 
 文件編號只代表導航分類，不代表 implementation Stage。
 
