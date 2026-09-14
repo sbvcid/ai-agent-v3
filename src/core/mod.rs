@@ -28,8 +28,8 @@ pub use observation_store::{InMemoryObservationStore, ObservationStore, Observat
 pub use process::ProcessSpec;
 pub use runtime::Runtime;
 pub use semantic_updater::{
-    KnowledgeStoreSemanticUpdater, NoOpSemanticUpdateProducer, SemanticUpdate,
-    SemanticUpdateError, SemanticUpdateProducer, SemanticUpdater,
+    KnowledgeStoreSemanticUpdater, NoOpSemanticUpdateProducer, SemanticUpdate, SemanticUpdateError,
+    SemanticUpdateProducer, SemanticUpdater,
 };
 pub use test_doubles::{FakeLlmProvider, FakeRuntime, MockLlm};
 pub use types::{
