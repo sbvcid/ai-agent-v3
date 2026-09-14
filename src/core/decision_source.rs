@@ -5,6 +5,7 @@
 
 use crate::core::context_compiler::{CompiledContext, ContextCompiler, DefaultContextCompiler};
 use crate::core::interpreter::interpret;
+use crate::core::knowledge_store::KnowledgeStore;
 use crate::core::observation_store::{InMemoryObservationStore, ObservationStore};
 use crate::core::types::{AgentDecision, AgentState};
 use crate::provider::{LlmProvider, ProviderMessage, ProviderRequest};
@@ -39,6 +40,18 @@ pub trait DecisionSource {
         _store: &dyn ObservationStore,
     ) -> Result<AgentDecision, DecisionSourceError> {
         self.next_decision(state)
+    }
+
+    /// Extended semantic data path carrying the authoritative ObservationStore and
+    /// KnowledgeStore together. B2-A adds this boundary without changing existing
+    /// implementors; B2-B will make the provider path consume the KnowledgeStore.
+    fn next_decision_with_stores(
+        &mut self,
+        state: &AgentState,
+        observation_store: &dyn ObservationStore,
+        _knowledge_store: &dyn KnowledgeStore,
+    ) -> Result<AgentDecision, DecisionSourceError> {
+        self.next_decision_with_store(state, observation_store)
     }
 }
 
@@ -102,6 +115,17 @@ where
         let decision =
             interpret(&response).map_err(|e| DecisionSourceError::Interpretation(e.to_string()))?;
         Ok(decision)
+    }
+
+    fn next_decision_with_stores(
+        &mut self,
+        state: &AgentState,
+        observation_store: &dyn ObservationStore,
+        _knowledge_store: &dyn KnowledgeStore,
+    ) -> Result<AgentDecision, DecisionSourceError> {
+        // B2-A establishes the authoritative multi-store boundary. B2-B will consume
+        // the KnowledgeStore through ContextCompiler::compile_with_knowledge().
+        self.next_decision_with_store(state, observation_store)
     }
 }
 
@@ -211,6 +235,57 @@ mod tests {
             .expect("step must succeed");
         assert_eq!(outcome, LoopStepOutcome::Continue);
         assert_eq!(agent_loop.current_step(), 1);
+    }
+
+    #[test]
+    fn test_agent_loop_passes_authoritative_knowledge_store_to_decision_source() {
+        #[derive(Debug)]
+        struct StoreAwareDecisionSource {
+            seen_knowledge_len: Option<usize>,
+        }
+
+        impl DecisionSource for StoreAwareDecisionSource {
+            fn next_decision(
+                &mut self,
+                _state: &AgentState,
+            ) -> Result<AgentDecision, DecisionSourceError> {
+                Ok(AgentDecision::observe("fallback"))
+            }
+
+            fn next_decision_with_stores(
+                &mut self,
+                _state: &AgentState,
+                _observation_store: &dyn ObservationStore,
+                knowledge_store: &dyn KnowledgeStore,
+            ) -> Result<AgentDecision, DecisionSourceError> {
+                self.seen_knowledge_len = Some(knowledge_store.len());
+                Ok(AgentDecision::observe("inspect knowledge store"))
+            }
+        }
+
+        let mut agent_loop = AgentLoop::new(AgentState::new(Goal::new("B2-A ownership")));
+        agent_loop
+            .knowledge_store_mut()
+            .record_unknown(crate::core::knowledge_store::Unknown {
+                id: "unknown-1".to_string(),
+                subject: "test".to_string(),
+                scope: "B2-A".to_string(),
+                question: "is the authoritative store passed through?".to_string(),
+            })
+            .expect("knowledge store update should succeed");
+
+        let mut source = StoreAwareDecisionSource {
+            seen_knowledge_len: None,
+        };
+        let mut runtime = FakeRuntime::new();
+
+        let outcome = agent_loop
+            .step(&mut source, &mut runtime)
+            .expect("step must succeed");
+
+        assert_eq!(outcome, LoopStepOutcome::Continue);
+        assert_eq!(source.seen_knowledge_len, Some(1));
+        assert_eq!(agent_loop.knowledge_store().len(), 1);
     }
 
     #[test]
