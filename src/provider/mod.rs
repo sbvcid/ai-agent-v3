@@ -6,6 +6,7 @@
 
 pub mod ollama;
 
+use crate::core::knowledge_store::{EvidenceLink, KnowledgeClaim, Unknown as KnowledgeUnknown};
 use serde::{Deserialize, Serialize};
 
 /// Provider-neutral capability contract for LLM integration.
@@ -18,6 +19,11 @@ pub trait LlmProvider {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderRequest {
     pub messages: Vec<ProviderMessage>,
+    /// Compiled Knowledge semantic context carried alongside the provider messages.
+    /// Provider adapters may format this data into their wire representation as needed.
+    pub knowledge_claims: Vec<KnowledgeClaim>,
+    pub evidence_links: Vec<EvidenceLink>,
+    pub knowledge_unknowns: Vec<KnowledgeUnknown>,
 }
 
 /// Provider-neutral chat message.
