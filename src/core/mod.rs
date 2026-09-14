@@ -8,8 +8,8 @@ pub mod observation_store;
 pub mod process;
 #[cfg(test)]
 pub mod process_tests;
-pub mod semantic_updater;
 pub mod runtime;
+pub mod semantic_updater;
 pub mod test_doubles;
 pub mod types;
 
