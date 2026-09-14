@@ -1,7 +1,11 @@
 //! Context Compiler for Agent Core.
 //!
-//! Transforms Agent state and stored observations into a semantic intermediate representation (`CompiledContext`).
+//! Transforms Agent state, observations, and optional derived knowledge into a
+//! semantic intermediate representation (`CompiledContext`).
 
+use crate::core::knowledge_store::{
+    EvidenceLink, KnowledgeClaim, KnowledgeStore, Unknown as KnowledgeUnknown,
+};
 use crate::core::observation_store::ObservationStore;
 use crate::core::types::{Action, AgentState, Goal, Observation};
 use serde::{Deserialize, Serialize};
@@ -21,7 +25,10 @@ pub struct CompiledContext {
     pub understanding: String,
     pub observations: Vec<Observation>,
     pub recent_actions: Vec<Action>,
+    pub knowledge_claims: Vec<KnowledgeClaim>,
+    pub evidence_links: Vec<EvidenceLink>,
     pub unknowns: Vec<String>,
+    pub knowledge_unknowns: Vec<KnowledgeUnknown>,
     pub active_problems: Vec<String>,
 }
 
@@ -32,6 +39,24 @@ pub trait ContextCompiler: std::fmt::Debug {
         state: &AgentState,
         observations: &dyn ObservationStore,
     ) -> Result<CompiledContext, ContextCompileError>;
+
+    /// Compile with derived Knowledge / Evidence / Unknown semantic state.
+    /// The default preserves compatibility for existing compiler implementations.
+    fn compile_with_knowledge(
+        &self,
+        state: &AgentState,
+        observations: &dyn ObservationStore,
+        knowledge: &dyn KnowledgeStore,
+    ) -> Result<CompiledContext, ContextCompileError> {
+        let mut context = self.compile(state, observations)?;
+        knowledge
+            .validate(observations)
+            .map_err(|e| ContextCompileError::Compilation(e.to_string()))?;
+        context.knowledge_claims = knowledge.claims().into_iter().cloned().collect();
+        context.evidence_links = knowledge.evidence().into_iter().cloned().collect();
+        context.knowledge_unknowns = knowledge.unknowns().into_iter().cloned().collect();
+        Ok(context)
+    }
 }
 
 /// Default deterministic context compiler using recency bounds.
@@ -81,7 +106,10 @@ impl ContextCompiler for DefaultContextCompiler {
             understanding: state.understanding.clone(),
             observations: obs_vec,
             recent_actions: act_vec,
+            knowledge_claims: Vec::new(),
+            evidence_links: Vec::new(),
             unknowns: state.unknowns.clone(),
+            knowledge_unknowns: Vec::new(),
             active_problems: state.active_problems.clone(),
         })
     }
@@ -90,6 +118,9 @@ impl ContextCompiler for DefaultContextCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::knowledge_store::{
+        EvidenceRelation, InMemoryKnowledgeStore, KnowledgeClaimStatus,
+    };
     use crate::core::observation_store::InMemoryObservationStore;
     use crate::core::types::{ActionType, ObservationKind};
 
@@ -107,6 +138,7 @@ mod tests {
         assert_eq!(ctx.understanding, "Auth module uses JWT tokens");
         assert!(ctx.observations.is_empty());
         assert!(ctx.recent_actions.is_empty());
+        assert!(ctx.knowledge_claims.is_empty());
     }
 
     #[test]
@@ -137,7 +169,6 @@ mod tests {
 
         let store = InMemoryObservationStore::new();
         let compiler = DefaultContextCompiler::default();
-
         let ctx = compiler.compile(&state, &store).expect("should compile");
         assert_eq!(ctx.unknowns, vec!["API endpoint URL".to_string()]);
         assert_eq!(ctx.active_problems, vec!["Port 8080 in use".to_string()]);
@@ -147,7 +178,6 @@ mod tests {
     fn test_compiler_deterministic_bounded_selection() {
         let goal = Goal::new("Test goal");
         let state = AgentState::new(goal);
-
         let mut store = InMemoryObservationStore::new();
         for i in 1..=10 {
             let obs = Observation::new(
@@ -160,7 +190,6 @@ mod tests {
 
         let compiler = DefaultContextCompiler::new(3, 3);
         let ctx = compiler.compile(&state, &store).expect("should compile");
-
         assert_eq!(ctx.observations.len(), 3);
         assert_eq!(ctx.observations[0].id, "obs-8");
         assert_eq!(ctx.observations[1].id, "obs-9");
@@ -171,7 +200,6 @@ mod tests {
     fn test_store_history_independent_of_bounded_context() {
         let goal = Goal::new("Test goal");
         let state = AgentState::new(goal);
-
         let mut store = InMemoryObservationStore::new();
         for i in 1..=5 {
             let obs = Observation::new(
@@ -184,16 +212,63 @@ mod tests {
 
         let compiler = DefaultContextCompiler::new(2, 2);
         let ctx = compiler.compile(&state, &store).expect("should compile");
-
-        // Bounded context has only last 2 observations
         assert_eq!(ctx.observations.len(), 2);
         assert_eq!(ctx.observations[0].id, "obs-4");
         assert_eq!(ctx.observations[1].id, "obs-5");
-
-        // Store itself still retains all 5 observations (store history is intact and unmutated)
         assert_eq!(store.len(), 5);
         assert!(store.get("obs-1").is_some());
         assert!(store.get("obs-2").is_some());
+    }
+
+    #[test]
+    fn test_compiler_consumes_knowledge_semantics_deterministically() {
+        let goal = Goal::new("Inspect service");
+        let state = AgentState::new(goal);
+        let mut observations = InMemoryObservationStore::new();
+        observations
+            .record(Observation::new("obs-1", ObservationKind::Environment, "port open"))
+            .unwrap();
+
+        let mut knowledge = InMemoryKnowledgeStore::new();
+        knowledge
+            .record_claim_with_evidence(
+                KnowledgeClaim {
+                    id: "claim-1".into(),
+                    subject: "service".into(),
+                    predicate: "port".into(),
+                    value: "8080".into(),
+                    status: KnowledgeClaimStatus::Observed,
+                    scope: "current host".into(),
+                    evidence_refs: vec!["obs-1".into()],
+                },
+                vec![EvidenceLink {
+                    observation_id: "obs-1".into(),
+                    claim_id: "claim-1".into(),
+                    relation: EvidenceRelation::Supports,
+                }],
+                &observations,
+            )
+            .unwrap();
+        knowledge
+            .record_unknown(KnowledgeUnknown {
+                id: "unknown-1".into(),
+                subject: "service".into(),
+                scope: "current host".into(),
+                question: "Which process owns the port?".into(),
+            })
+            .unwrap();
+
+        let compiler = DefaultContextCompiler::default();
+        let first = compiler
+            .compile_with_knowledge(&state, &observations, &knowledge)
+            .unwrap();
+        let second = compiler
+            .compile_with_knowledge(&state, &observations, &knowledge)
+            .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.knowledge_claims.len(), 1);
+        assert_eq!(first.evidence_links.len(), 1);
+        assert_eq!(first.knowledge_unknowns.len(), 1);
     }
 
     #[test]
@@ -212,7 +287,6 @@ mod tests {
         let compiler = DefaultContextCompiler::default();
         let ctx1 = compiler.compile(&state, &store).unwrap();
         let ctx2 = compiler.compile(&state, &store).unwrap();
-
         assert_eq!(ctx1, ctx2);
     }
 }
