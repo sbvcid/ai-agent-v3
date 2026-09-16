@@ -10,8 +10,12 @@
 
 use ai_agent_v3::{
     Action, ActionResult, ActionType, AgentDecision, AgentLoop, AgentState, CheckpointStore,
-    ExecutionState, FakeRuntime, FinalTaskStatus, Goal, JsonFileCheckpointStore, LoopError,
-    LoopEvent, LoopStepOutcome, MockLlm, StateCheckpoint, ValidationError, VerificationState,
+    EvidenceLink, EvidenceRelation, ExecutionState, FakeLlmProvider, FakeRuntime, FinalTaskStatus,
+    Goal, JsonFileCheckpointStore, KnowledgeClaim, KnowledgeClaimStatus, KnowledgeStore,
+    KnowledgeStoreSemanticUpdater, LoopError, LoopEvent, LoopStepOutcome, MockLlm, Observation,
+    ObservationKind, ObservationStore, ProviderDecisionSource, ProviderMessage, ProviderResponse,
+    ProviderToolCall, SemanticUpdate, SemanticUpdateProducer, StateCheckpoint, Unknown,
+    ValidationError, VerificationState,
 };
 use std::fs;
 
@@ -639,5 +643,575 @@ fn test_non_done_terminals_do_not_require_goal_verification() {
             final_state.verification_state,
             VerificationState::NotVerified
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// B2-C3: Deterministic Closed-Loop Semantic Integration Tests
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+struct ActionToClaimProducer;
+
+impl SemanticUpdateProducer for ActionToClaimProducer {
+    fn produce(&mut self, observation: &Observation) -> Option<SemanticUpdate> {
+        let obs_id = observation.id.clone();
+        let action_id = observation
+            .source_action_id
+            .clone()
+            .unwrap_or_else(|| "unknown-action".to_string());
+        let claim_id = format!("claim-for-{}", obs_id);
+        Some(SemanticUpdate::ClaimWithEvidence {
+            claim: KnowledgeClaim {
+                id: claim_id.clone(),
+                subject: action_id,
+                predicate: "execution_result".to_string(),
+                value: observation.summary.clone(),
+                status: KnowledgeClaimStatus::Observed,
+                scope: "closed-loop-integration".to_string(),
+                evidence_refs: vec![obs_id.clone()],
+            },
+            evidence: vec![EvidenceLink {
+                observation_id: obs_id,
+                claim_id,
+                relation: EvidenceRelation::Supports,
+            }],
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test 12: Success Action Observation -> Knowledge -> Next ProviderRequest
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_b2_c3_closed_loop_success_observation_to_next_provider_request() {
+    let goal = Goal::new("Validate semantic closed loop with success action");
+    let state = AgentState::new(goal);
+
+    let response_1 = ProviderResponse {
+        content: String::new(),
+        tool_calls: vec![ProviderToolCall {
+            id: "act-run-check".to_string(),
+            name: "execute_process".to_string(),
+            arguments: serde_json::json!({ "executable": "cargo", "args": ["check"] }),
+        }],
+        finish_reason: Some("tool_calls".to_string()),
+    };
+    let response_2 = ProviderResponse {
+        content: String::new(),
+        tool_calls: vec![ProviderToolCall {
+            id: "act-run-test".to_string(),
+            name: "execute_process".to_string(),
+            arguments: serde_json::json!({ "executable": "cargo", "args": ["test"] }),
+        }],
+        finish_reason: Some("tool_calls".to_string()),
+    };
+
+    let fake_provider = FakeLlmProvider::with_responses(vec![Ok(response_1), Ok(response_2)]);
+    let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result(
+        "act-run-check",
+        ActionResult::success("act-run-check", "build clean: 0 warnings"),
+    );
+    runtime.add_result(
+        "act-run-test",
+        ActionResult::success("act-run-test", "test suite passed"),
+    );
+
+    let mut agent_loop = AgentLoop::new(state)
+        .with_semantic_update_pipeline(ActionToClaimProducer, KnowledgeStoreSemanticUpdater::new());
+
+    // Step 1: Decision source called -> ProviderRequest 1 has no knowledge claims yet
+    let outcome_1 = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 1 must succeed");
+    assert_eq!(outcome_1, LoopStepOutcome::Continue);
+
+    // Assert step 1 results:
+    // 1. Observation was produced and stored authoritatively
+    let obs_1 = agent_loop
+        .observation_store()
+        .get("obs-1")
+        .expect("obs-1 must exist in authoritative store");
+    assert_eq!(obs_1.source_action_id.as_deref(), Some("act-run-check"));
+    assert_eq!(obs_1.summary, "build clean: 0 warnings");
+
+    // 2. KnowledgeClaim and EvidenceLink exist in authoritative KnowledgeStore
+    assert_eq!(agent_loop.knowledge_store().claims().len(), 1);
+    let claim_1 = &agent_loop.knowledge_store().claims()[0];
+    assert_eq!(claim_1.id, "claim-for-obs-1");
+    assert_eq!(claim_1.subject, "act-run-check");
+    assert_eq!(claim_1.value, "build clean: 0 warnings");
+    assert_eq!(claim_1.status, KnowledgeClaimStatus::Observed);
+    assert_eq!(claim_1.evidence_refs, vec!["obs-1"]);
+
+    assert_eq!(agent_loop.knowledge_store().evidence().len(), 1);
+    let link_1 = &agent_loop.knowledge_store().evidence()[0];
+    assert_eq!(link_1.observation_id, "obs-1");
+    assert_eq!(link_1.claim_id, "claim-for-obs-1");
+    assert_eq!(link_1.relation, EvidenceRelation::Supports);
+
+    // 3. ProviderRequest 1 had empty knowledge context
+    let recorded_requests = decision_source.provider().recorded_requests();
+    assert_eq!(recorded_requests.len(), 1);
+    assert!(recorded_requests[0].knowledge_claims.is_empty());
+    assert!(recorded_requests[0].evidence_links.is_empty());
+
+    // Step 2: Next step executes -> ContextCompiler compiles KnowledgeStore -> ProviderRequest 2
+    let outcome_2 = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 2 must succeed");
+    assert_eq!(outcome_2, LoopStepOutcome::Continue);
+
+    // Assert step 2 closed-loop propagation:
+    let recorded_requests = decision_source.provider().recorded_requests();
+    assert_eq!(recorded_requests.len(), 2);
+    let req_2 = &recorded_requests[1];
+
+    // Provenance link: EvidenceLink in ProviderRequest accurately references obs-1 from previous Action
+    assert_eq!(req_2.knowledge_claims.len(), 1);
+    assert_eq!(req_2.knowledge_claims[0].id, "claim-for-obs-1");
+    assert_eq!(req_2.knowledge_claims[0].subject, "act-run-check");
+    assert_eq!(req_2.knowledge_claims[0].value, "build clean: 0 warnings");
+    assert_eq!(
+        req_2.knowledge_claims[0].status,
+        KnowledgeClaimStatus::Observed
+    );
+    assert_eq!(req_2.knowledge_claims[0].evidence_refs, vec!["obs-1"]);
+
+    assert_eq!(req_2.evidence_links.len(), 1);
+    assert_eq!(req_2.evidence_links[0].observation_id, "obs-1");
+    assert_eq!(req_2.evidence_links[0].claim_id, "claim-for-obs-1");
+    assert_eq!(req_2.evidence_links[0].relation, EvidenceRelation::Supports);
+
+    // Observation summary is also represented in provider message content
+    assert!(req_2.messages.iter().any(|msg| match msg {
+        ProviderMessage::User(text) => text.contains("build clean: 0 warnings"),
+        _ => false,
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// Test 13: Failure Action Observation -> Knowledge -> Next ProviderRequest
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_b2_c3_closed_loop_failure_observation_propagates_to_provider_request() {
+    let goal = Goal::new("Validate semantic closed loop with failure observation");
+    let state = AgentState::new(goal);
+
+    let response_1 = ProviderResponse {
+        content: String::new(),
+        tool_calls: vec![ProviderToolCall {
+            id: "act-run-migrate".to_string(),
+            name: "execute_process".to_string(),
+            arguments: serde_json::json!({ "executable": "diesel", "args": ["migration", "run"] }),
+        }],
+        finish_reason: Some("tool_calls".to_string()),
+    };
+    let response_2 = ProviderResponse {
+        content: String::new(),
+        tool_calls: vec![ProviderToolCall {
+            id: "act-check-logs".to_string(),
+            name: "execute_process".to_string(),
+            arguments: serde_json::json!({ "executable": "cat", "args": ["migration.log"] }),
+        }],
+        finish_reason: Some("tool_calls".to_string()),
+    };
+
+    let fake_provider = FakeLlmProvider::with_responses(vec![Ok(response_1), Ok(response_2)]);
+    let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+    // Runtime returns an Action failure (e.g. non-zero exit status or error message)
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result(
+        "act-run-migrate",
+        ActionResult::failure(
+            "act-run-migrate",
+            "migration error: table `users` already exists",
+        ),
+    );
+    runtime.add_result(
+        "act-check-logs",
+        ActionResult::success("act-check-logs", "table already exists at version 2"),
+    );
+
+    let mut agent_loop = AgentLoop::new(state)
+        .with_semantic_update_pipeline(ActionToClaimProducer, KnowledgeStoreSemanticUpdater::new());
+
+    // Step 1: Action fails in Runtime
+    let outcome_1 = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 1 must succeed even when action fails (failure is an observation)");
+    assert_eq!(outcome_1, LoopStepOutcome::Continue);
+
+    // Observation must be preserved despite failure
+    let obs_1 = agent_loop
+        .observation_store()
+        .get("obs-1")
+        .expect("failed action must still produce an authoritative observation");
+    assert_eq!(obs_1.source_action_id.as_deref(), Some("act-run-migrate"));
+    assert_eq!(
+        obs_1.summary,
+        "migration error: table `users` already exists"
+    );
+    assert_eq!(obs_1.kind, ObservationKind::ActionResult);
+
+    // Semantic updater derived a claim from the failure observation
+    assert_eq!(agent_loop.knowledge_store().claims().len(), 1);
+    assert_eq!(
+        agent_loop.knowledge_store().claims()[0].value,
+        "migration error: table `users` already exists"
+    );
+    assert_eq!(
+        agent_loop.knowledge_store().evidence()[0].observation_id,
+        "obs-1"
+    );
+
+    // Step 2: Next decision context is compiled
+    let outcome_2 = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 2 must succeed");
+    assert_eq!(outcome_2, LoopStepOutcome::Continue);
+
+    // Failure claim and provenance link are present in the second ProviderRequest
+    let requests = decision_source.provider().recorded_requests();
+    assert_eq!(requests.len(), 2);
+    let req_2 = &requests[1];
+
+    assert_eq!(req_2.knowledge_claims.len(), 1);
+    assert_eq!(
+        req_2.knowledge_claims[0].value,
+        "migration error: table `users` already exists"
+    );
+    assert_eq!(req_2.evidence_links.len(), 1);
+    assert_eq!(req_2.evidence_links[0].observation_id, "obs-1");
+    assert_eq!(req_2.evidence_links[0].relation, EvidenceRelation::Supports);
+
+    assert!(req_2.messages.iter().any(|msg| match msg {
+        ProviderMessage::User(text) =>
+            text.contains("migration error: table `users` already exists"),
+        _ => false,
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// Test 14: Semantic update failure preserves observation and maintains atomicity
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+struct BrokenSemanticProducer;
+
+impl SemanticUpdateProducer for BrokenSemanticProducer {
+    fn produce(&mut self, _observation: &Observation) -> Option<SemanticUpdate> {
+        // Deliberately reference non-existent Observation ID to trigger KnowledgeStore invariant error
+        Some(SemanticUpdate::Evidence(EvidenceLink {
+            observation_id: "non-existent-observation-id".to_string(),
+            claim_id: "non-existent-claim-id".to_string(),
+            relation: EvidenceRelation::Supports,
+        }))
+    }
+}
+
+#[derive(Debug)]
+struct InvalidProvenanceClaimProducer;
+
+impl SemanticUpdateProducer for InvalidProvenanceClaimProducer {
+    fn produce(&mut self, _observation: &Observation) -> Option<SemanticUpdate> {
+        // Observed claim with evidence pointing to missing observation
+        Some(SemanticUpdate::ClaimWithEvidence {
+            claim: KnowledgeClaim {
+                id: "claim-missing-obs".to_string(),
+                subject: "ghost-action".to_string(),
+                predicate: "ghost-pred".to_string(),
+                value: "ghost-val".to_string(),
+                status: KnowledgeClaimStatus::Observed,
+                scope: "test".to_string(),
+                evidence_refs: vec!["ghost-obs".to_string()],
+            },
+            evidence: vec![EvidenceLink {
+                observation_id: "ghost-obs".to_string(),
+                claim_id: "claim-missing-obs".to_string(),
+                relation: EvidenceRelation::Supports,
+            }],
+        })
+    }
+}
+
+#[test]
+fn test_b2_c3_closed_loop_semantic_update_failure_preserves_observation_atomicity() {
+    let goal = Goal::new("Validate failure atomicity and observation preservation");
+
+    // Case A: Missing observation in evidence link
+    {
+        let state = AgentState::new(goal.clone());
+        let response = ProviderResponse {
+            content: String::new(),
+            tool_calls: vec![ProviderToolCall {
+                id: "act-run".to_string(),
+                name: "execute_process".to_string(),
+                arguments: serde_json::json!({ "executable": "cargo", "args": ["build"] }),
+            }],
+            finish_reason: Some("tool_calls".to_string()),
+        };
+        let fake_provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
+        let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+        let mut runtime = FakeRuntime::new();
+        runtime.add_result(
+            "act-run",
+            ActionResult::success("act-run", "build succeeded"),
+        );
+
+        let mut agent_loop = AgentLoop::new(state).with_semantic_update_pipeline(
+            BrokenSemanticProducer,
+            KnowledgeStoreSemanticUpdater::new(),
+        );
+
+        let err = agent_loop
+            .step(&mut decision_source, &mut runtime)
+            .expect_err("step must fail when semantic update is invalid");
+
+        assert!(matches!(err, LoopError::SemanticUpdate(_)));
+
+        // 1. Observation was recorded prior to semantic update and remains in store
+        let obs = agent_loop
+            .observation_store()
+            .get("obs-1")
+            .expect("obs-1 must remain in authoritative observation store");
+        assert_eq!(obs.source_action_id.as_deref(), Some("act-run"));
+        assert_eq!(obs.summary, "build succeeded");
+
+        // 2. KnowledgeStore is completely unmodified (atomicity preserved)
+        assert!(agent_loop.knowledge_store().claims().is_empty());
+        assert!(agent_loop.knowledge_store().evidence().is_empty());
+        assert!(agent_loop.knowledge_store().unknowns().is_empty());
+    }
+
+    // Case B: Observed claim with missing observation provenance
+    {
+        let state = AgentState::new(goal);
+        let response = ProviderResponse {
+            content: String::new(),
+            tool_calls: vec![ProviderToolCall {
+                id: "act-run-2".to_string(),
+                name: "execute_process".to_string(),
+                arguments: serde_json::json!({ "executable": "cargo", "args": ["build"] }),
+            }],
+            finish_reason: Some("tool_calls".to_string()),
+        };
+        let fake_provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
+        let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+        let mut runtime = FakeRuntime::new();
+        runtime.add_result("act-run-2", ActionResult::success("act-run-2", "build ok"));
+
+        let mut agent_loop = AgentLoop::new(state).with_semantic_update_pipeline(
+            InvalidProvenanceClaimProducer,
+            KnowledgeStoreSemanticUpdater::new(),
+        );
+
+        let err = agent_loop
+            .step(&mut decision_source, &mut runtime)
+            .expect_err("step must fail when claim provenance references missing observation");
+
+        assert!(matches!(err, LoopError::SemanticUpdate(_)));
+
+        // Observation must still be in ObservationStore
+        assert!(agent_loop.observation_store().get("obs-1").is_some());
+
+        // KnowledgeStore must have zero claims/evidence/unknowns (atomic rollback/no insertion)
+        assert!(agent_loop.knowledge_store().claims().is_empty());
+        assert!(agent_loop.knowledge_store().evidence().is_empty());
+        assert!(agent_loop.knowledge_store().unknowns().is_empty());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test 15: Boundary & Ownership Invariants and Conflict Coexistence
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+struct ConflictingAndUnknownProducer {
+    step: usize,
+}
+
+impl SemanticUpdateProducer for ConflictingAndUnknownProducer {
+    fn produce(&mut self, observation: &Observation) -> Option<SemanticUpdate> {
+        self.step += 1;
+        match self.step {
+            1 => {
+                let obs_id = observation.id.clone();
+                Some(SemanticUpdate::ClaimWithEvidence {
+                    claim: KnowledgeClaim {
+                        id: "claim-port-8080".to_string(),
+                        subject: "web-server".to_string(),
+                        predicate: "listening_port".to_string(),
+                        value: "8080".to_string(),
+                        status: KnowledgeClaimStatus::Observed,
+                        scope: "network".to_string(),
+                        evidence_refs: vec![obs_id.clone()],
+                    },
+                    evidence: vec![EvidenceLink {
+                        observation_id: obs_id,
+                        claim_id: "claim-port-8080".to_string(),
+                        relation: EvidenceRelation::Supports,
+                    }],
+                })
+            }
+            2 => {
+                let obs_id = observation.id.clone();
+                Some(SemanticUpdate::ClaimWithEvidence {
+                    claim: KnowledgeClaim {
+                        id: "claim-port-9090".to_string(),
+                        subject: "web-server".to_string(),
+                        predicate: "listening_port".to_string(),
+                        value: "9090".to_string(),
+                        status: KnowledgeClaimStatus::Observed,
+                        scope: "network".to_string(),
+                        evidence_refs: vec![obs_id.clone()],
+                    },
+                    evidence: vec![EvidenceLink {
+                        observation_id: obs_id,
+                        claim_id: "claim-port-9090".to_string(),
+                        relation: EvidenceRelation::Supports,
+                    }],
+                })
+            }
+            3 => Some(SemanticUpdate::Unknown(Unknown {
+                id: "unknown-tls-cert".to_string(),
+                subject: "web-server".to_string(),
+                scope: "security".to_string(),
+                question: "is TLS 1.3 enabled?".to_string(),
+            })),
+            _ => None,
+        }
+    }
+}
+
+#[test]
+fn test_b2_c3_closed_loop_boundary_and_ownership_invariants() {
+    let goal = Goal::new("Validate boundary ownership and conflict coexistence");
+    let state = AgentState::new(goal);
+
+    let response_1 = ProviderResponse {
+        content: String::new(),
+        tool_calls: vec![ProviderToolCall {
+            id: "act-probe-1".to_string(),
+            name: "execute_process".to_string(),
+            arguments: serde_json::json!({ "executable": "curl", "args": ["http://localhost:8080"] }),
+        }],
+        finish_reason: Some("tool_calls".to_string()),
+    };
+    let response_2 = ProviderResponse {
+        content: String::new(),
+        tool_calls: vec![ProviderToolCall {
+            id: "act-probe-2".to_string(),
+            name: "execute_process".to_string(),
+            arguments: serde_json::json!({ "executable": "curl", "args": ["http://localhost:9090"] }),
+        }],
+        finish_reason: Some("tool_calls".to_string()),
+    };
+    let response_3 = ProviderResponse {
+        content: String::new(),
+        tool_calls: vec![ProviderToolCall {
+            id: "act-probe-3".to_string(),
+            name: "execute_process".to_string(),
+            arguments: serde_json::json!({ "executable": "openssl", "args": ["s_client"] }),
+        }],
+        finish_reason: Some("tool_calls".to_string()),
+    };
+    let response_4 = ProviderResponse {
+        content: String::new(),
+        tool_calls: vec![ProviderToolCall {
+            id: "act-probe-4".to_string(),
+            name: "execute_process".to_string(),
+            arguments: serde_json::json!({ "executable": "echo", "args": ["done"] }),
+        }],
+        finish_reason: Some("tool_calls".to_string()),
+    };
+
+    let fake_provider = FakeLlmProvider::with_responses(vec![
+        Ok(response_1),
+        Ok(response_2),
+        Ok(response_3),
+        Ok(response_4),
+    ]);
+    let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result(
+        "act-probe-1",
+        ActionResult::success("act-probe-1", "response on 8080"),
+    );
+    runtime.add_result(
+        "act-probe-2",
+        ActionResult::success("act-probe-2", "response on 9090"),
+    );
+    runtime.add_result(
+        "act-probe-3",
+        ActionResult::success("act-probe-3", "handshake completed"),
+    );
+    runtime.add_result("act-probe-4", ActionResult::success("act-probe-4", "done"));
+
+    let mut agent_loop = AgentLoop::new(state).with_semantic_update_pipeline(
+        ConflictingAndUnknownProducer { step: 0 },
+        KnowledgeStoreSemanticUpdater::new(),
+    );
+
+    // Step 1: Probe 8080 -> Records Claim: port=8080
+    agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 1 succeeds");
+
+    // Step 2: Probe 9090 -> Records conflicting Claim: port=9090
+    agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 2 succeeds");
+
+    // Step 3: Probe TLS -> Records first-class Unknown
+    agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 3 succeeds");
+
+    // Step 4: Compiles context containing both conflicting claims and the unknown
+    agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 4 succeeds");
+
+    let requests = decision_source.provider().recorded_requests();
+    assert_eq!(requests.len(), 4);
+    let req_4 = &requests[3];
+
+    // Invariant 1: Conflicting claims coexist without automatic truth resolution
+    assert_eq!(req_4.knowledge_claims.len(), 2);
+    let claim_values: Vec<&str> = req_4
+        .knowledge_claims
+        .iter()
+        .map(|c| c.value.as_str())
+        .collect();
+    assert!(claim_values.contains(&"8080"));
+    assert!(claim_values.contains(&"9090"));
+    assert_eq!(req_4.evidence_links.len(), 2);
+
+    // Invariant 2: Unknown is present as an independent first-class semantic object
+    assert_eq!(req_4.knowledge_unknowns.len(), 1);
+    assert_eq!(req_4.knowledge_unknowns[0].id, "unknown-tls-cert");
+    assert_eq!(req_4.knowledge_unknowns[0].question, "is TLS 1.3 enabled?");
+
+    // Invariant 3: ProviderRequest is provider-neutral and detached from authoritative store
+    assert_eq!(agent_loop.knowledge_store().claims().len(), 2);
+    assert_eq!(agent_loop.knowledge_store().unknowns().len(), 1);
+
+    // Invariant 4: Structural absence of AgentDecision::UpdateKnowledge
+    let decision = AgentDecision::observe("check environment");
+    match decision {
+        AgentDecision::Observe { .. } => {}
+        AgentDecision::Act { .. } => {}
+        AgentDecision::Wait { .. } => {}
+        AgentDecision::Finish { .. } => {}
     }
 }
