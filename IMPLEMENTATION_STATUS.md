@@ -12,7 +12,10 @@ Post-Cycle Increment: Observation Store + Context Compiler — COMPLETED
 B1 — Knowledge Semantic Foundation: VERIFIED / RELEASE GATE PASSED
 B2-A — Ownership / Data Path: VERIFIED / RELEASE GATE PASSED
 B2-B — Context / Provider Integration: VERIFIED / RELEASE GATE PASSED
-Current overall state: deterministic closed-loop foundation + observation/context foundation + Evidence/Knowledge semantic foundation + Knowledge-aware provider context path
+B2-C1 — Core Semantic Update Boundary: COMPLETED
+B2-C2 — AgentLoop Integration Point: COMPLETED / VERIFIED
+B2-C3 — Deterministic Closed-Loop Integration: NOT IMPLEMENTED / PENDING
+Current overall state: deterministic closed-loop foundation + observation/context foundation + Evidence/Knowledge semantic foundation + Knowledge-aware provider context path + Core semantic update boundary & AgentLoop integration point (B2-C1 & B2-C2)
 ```
 
 **Stage 10 尚未定義。** B1 與 B2 是經批准的 Agent Core semantic implementation increments，不自動建立 Stage 10。
@@ -28,7 +31,10 @@ Latest documentation checkpoint: this commit
 Latest B1 implementation commit: 6f86cdce
 Latest B2-A implementation commits: 474d2b02, 877fb422, 039e6a24
 Latest B2-B implementation commits: 5add9065, e49e64dc, 6b2e092
-Latest B2-B verification status: VERIFIED / RELEASE GATE PASSED
+Latest B2-C1 implementation commits: 5627f9a, cf05d19, c0d8bfa, 77ae90a, cb066ac, 30e0138
+Latest B2-C2 implementation commits: 30bef1f, 6d779f6, 5a58f6c, 31c5ee3, a89979d, 7b97eda, f500264, 648b468
+Latest pushed commit: 648b468
+Latest verification status: B2-C2 VERIFIED (checks & tests pass, 121 unit tests)
 ```
 
 以上 commit 是狀態導航資訊，不是永久真相。新的 AI session 必須先執行：
@@ -317,7 +323,7 @@ doc-tests: 0
 
 ## 6. B2 — Knowledge Context Integration
 
-B2 依 `docs/10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` 實作。B2 分為 B2-A、B2-B、B2-C；本次已完成 B2-A 與 B2-B，B2-C 尚未實作。
+B2 依 `docs/10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` 與 `docs/11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` 實作。B2 包含 B2-A、B2-B 與 B2-C。目前已完成 B2-A、B2-B、B2-C1、B2-C2；B2-C3 尚未實作。不要把整個 B2-C 標記為完成，不建立新的 Stage。
 
 ### B2-A — Ownership / Data Path
 
@@ -428,6 +434,76 @@ Latest formatting commit: 6b2e092
 
 因此 B2-B 正式視為 **VERIFIED / RELEASE GATE PASSED**。
 
+### B2-C — Closed-loop Semantic Integration
+
+B2-C 依 `docs/11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` 實作。
+目前進度：B2-C1 與 B2-C2 已完成並通過驗證；B2-C3 尚未實作。整個 B2-C 尚未完成，不自動建立新的 Stage。
+
+#### B2-C1 — Core Semantic Update Boundary
+
+**COMPLETED**
+
+完成：
+- 在 `src/core/semantic_updater.rs` 定義 Core-level 語意更新邊界：
+  - `SemanticUpdate` enum（`ClaimWithEvidence`、`Evidence`、`Unknown`）。
+  - `SemanticUpdater` trait 與預設實作 `KnowledgeStoreSemanticUpdater`。
+  - `SemanticUpdateProducer` trait 與預設 no-op 實作 `NoOpSemanticUpdateProducer`。
+  - `SemanticUpdateError` 錯誤映射（包裝 `KnowledgeStoreError`）。
+- 邊界純粹為 mutation interface，不進行自然語言推理，不計算 confidence / probability，不自動解決衝突。
+- 保持 provider-neutral 與 runtime-neutral。
+- 遵循 B1 的原子 provenance 與 invariant 要求。
+
+#### B2-C2 — AgentLoop Integration Point
+
+**COMPLETED / VERIFIED**
+
+完成：
+- 在 `src/core/agent_loop.rs` 整合語意更新管線：
+  - `AgentLoop::with_semantic_update_pipeline(producer, updater)` 提供管線注入。
+  - 預設建構子使用 `NoOpSemanticUpdateProducer` 與 `KnowledgeStoreSemanticUpdater::new()`。
+  - 確立嚴格的 **Observation-first ordering**：
+
+```text
+ActionResult
+    ↓
+Observation 建立
+    ↓
+ObservationStore.record()（成功寫入權威歷史）
+    ↓
+apply_semantic_update(&observation)
+    ↓
+SemanticUpdateProducer.produce()
+    ↓
+SemanticUpdater.apply()
+    ↓
+KnowledgeStore
+```
+
+- 核心保證：
+  - 任何 EvidenceLink 引用 Observation 前，該 Observation 必定已成功寫入權威 `ObservationStore`。
+  - 若語意更新失敗，`ObservationStore` 已記錄的 Observation 保留為歷史證據（不撤銷），`KnowledgeStore` 遵循 B1 原子性保證（不產生部分寫入），`AgentLoop::step()` 回傳 `LoopError::SemanticUpdate`。
+  - `AgentLoop` 保持流程編排（orchestration），自身不進行任意 Knowledge 推理。
+- B2-C2 驗證結果：
+  - `cargo fmt --check` PASS
+  - `cargo clippy --all-targets --all-features -- -D warnings` PASS
+  - `cargo check` PASS
+  - `cargo test` PASS（121 unit tests, 11 closed-loop tests, 11 fs tests, 10 process execution tests, 6 schema checkpoint tests, 6 test doubles tests, 2 ollama provider tests）
+  - `git diff --check` PASS
+- 最新完成 commit：`648b468 style: apply rustfmt to semantic updater call`。
+
+#### B2-C3 — Deterministic Closed-Loop Integration
+
+**NOT IMPLEMENTED / PENDING**
+
+- **明確指出：B2-C3 尚未實作。**
+- 待實作範圍：在 integration tests 層級建立端到端確定性閉環驗證：
+  `ActionResult` → `Observation` → `ObservationStore` → `SemanticUpdate` → `KnowledgeStore` → `ContextCompiler` → `ProviderRequest`。
+- 驗證次輪決策 context 的 ProviderRequest 確實包含 Knowledge claim 與指向 Observation 的 EvidenceLink。
+- 驗證 Action 失敗時生成的 Observation 仍可被語意更新並傳遞至 ProviderRequest。
+- 驗證語意更新失敗時的原子性與隔離性。
+- **不要把整個 B2-C 標記為完成。**
+- **不要建立新的 Stage。**
+
 ### B2 邊界
 
 目前已建立的資料路徑：
@@ -435,9 +511,11 @@ Latest formatting commit: 6b2e092
 ```text
 ActionResult / Observation
         ↓
-ObservationStore
+ObservationStore.record()（權威歷史）
         ↓
-KnowledgeStore
+apply_semantic_update()（B2-C1 / B2-C2 整合點）
+        ↓
+KnowledgeStore（衍生語意狀態）
         ↓
 ContextCompiler::compile_with_knowledge()
         ↓
@@ -448,9 +526,9 @@ ProviderRequest
 Provider Adapter
 ```
 
-B2-A / B2-B 只建立 ownership 與 context propagation。它們沒有建立完整的 Knowledge reasoning producer、Hypothesis lifecycle、adaptive recovery 或其他 C–G 能力。
-
-B2-C 的 closed-loop semantic update boundary 尚未實作，也不能由本狀態文件自動視為已完成。
+B2-A、B2-B、B2-C1、B2-C2 已建立 ownership、context propagation 以及 Observation-first 的語意更新接入點。
+端到端的 closed-loop integration 驗證（B2-C3）尚未完成。
+B2 尚未建立生產級 reasoning producer、Hypothesis lifecycle、adaptive recovery 或其他 C–G 能力。
 
 ## 7. Current Architecture Boundary
 
@@ -521,7 +599,8 @@ Provider 必須保持可替換。
 
 ### Agent Core semantic direction
 
-- B2-C — Closed-loop Semantic Integration
+- B2-C3 — Deterministic Closed-Loop Integration（尚未實作）
+- B2-C4 — Failure and Atomicity Boundary verification（尚未實作）
 - Hypothesis lifecycle
 - Progress detection
 - Loop detection
@@ -564,8 +643,12 @@ docs/README.md
 
 ## 10. Current Next Step
 
-B2-A 與 B2-B 已完成並通過各自 Release Gate。
+B1、B2-A、B2-B、B2-C1、B2-C2 已完成並通過驗證。
 
-目前沒有自動開始 B2-C 的指令。Repository 應停在目前 verified baseline，等待下一個明確的 design / implementation 指令。
+最新完成 commit 為 `648b468 style: apply rustfmt to semantic updater call`。
 
-B2-C 若要開始，必須依 `docs/10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` 的既定 scope 與 acceptance criteria，由使用者明確批准後才可實作。
+目前下一個 increment 為 **B2-C3 — Deterministic Closed-Loop Integration**。
+
+**明確指出：B2-C3 尚未實作，整個 B2-C 尚未完成，亦不建立新的 Stage。**
+
+目前沒有自動開始 B2-C3 的指令。Repository 停在目前已驗證的 B2-C2 baseline，等待使用者對 B2-C3 的明確批准與實作指令。
