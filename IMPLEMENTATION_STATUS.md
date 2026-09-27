@@ -803,6 +803,15 @@ docs/08_AGENT_CORE_ROADMAP.md
   → 標記 NOT TAKEN（C–G 未實作，保留作為依賴關係分析紀錄）
 ```
 
+被放棄的實作嘗試保留於分支：
+
+```text
+archive/stage-9.2-abandoned  (3d3c465)
+  → "feat: integrate decision source into agent loop"
+  → 曾在 src/provider/decision_source.rs 實作，後來改為 src/core/decision_source.rs
+  → 這是一次未被採納的設計嘗試，保留作為「會記錄失敗」的工程紀律證據
+```
+
 停止前最後一次完整驗證：
 
 ```text
