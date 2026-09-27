@@ -10,12 +10,14 @@
 
 use ai_agent_v3::{
     Action, ActionResult, ActionType, AgentDecision, AgentLoop, AgentState, CheckpointStore,
-    EvidenceLink, EvidenceRelation, ExecutionState, FakeLlmProvider, FakeRuntime, FinalTaskStatus,
-    Goal, JsonFileCheckpointStore, KnowledgeClaim, KnowledgeClaimStatus, KnowledgeStore,
-    KnowledgeStoreSemanticUpdater, LoopError, LoopEvent, LoopStepOutcome, MockLlm, Observation,
-    ObservationKind, ObservationStore, ProviderDecisionSource, ProviderMessage, ProviderResponse,
-    ProviderToolCall, SemanticUpdate, SemanticUpdateProducer, StateCheckpoint, Unknown,
-    ValidationError, VerificationState,
+    ContextCompiler, DefaultContextCompiler, EvidenceLink, EvidenceRelation, ExecutionState,
+    FakeLlmProvider, FakeRuntime, FinalTaskStatus, Goal, InMemoryKnowledgeStore,
+    InMemoryObservationStore, JsonFileCheckpointStore, KnowledgeClaim, KnowledgeClaimStatus,
+    KnowledgeStore, KnowledgeStoreError, KnowledgeStoreSemanticUpdater, LoopError, LoopEvent,
+    LoopStepOutcome, MockLlm, Observation, ObservationKind, ObservationStore,
+    ProviderDecisionSource, ProviderMessage, ProviderResponse, ProviderToolCall, SemanticUpdate,
+    SemanticUpdateError, SemanticUpdateProducer, StateCheckpoint, Unknown, ValidationError,
+    VerificationState,
 };
 use std::fs;
 
@@ -1214,4 +1216,552 @@ fn test_b2_c3_closed_loop_boundary_and_ownership_invariants() {
         AgentDecision::Wait { .. } => {}
         AgentDecision::Finish { .. } => {}
     }
+}
+
+// ---------------------------------------------------------------------------
+// B2-C4: Failure and Atomicity Boundary Verification Tests
+// ---------------------------------------------------------------------------
+//
+// B2-C4 is a verification-only increment. It adds no production behaviour and
+// introduces no new semantic capability. These tests pin the failure and
+// atomicity guarantees that B1 (KnowledgeStore invariants) and B2-C1/B2-C2
+// (semantic update boundary + Observation-first ordering) already implement.
+
+/// A scripted decision source helper: one `execute_process` action per step.
+fn b2_c4_process_decision(action_id: &str) -> ProviderResponse {
+    ProviderResponse {
+        content: String::new(),
+        tool_calls: vec![ProviderToolCall {
+            id: action_id.to_string(),
+            name: "execute_process".to_string(),
+            arguments: serde_json::json!({ "executable": "cargo", "args": ["build"] }),
+        }],
+        finish_reason: Some("tool_calls".to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test 16 (T1): Multi-item atomicity — a ClaimWithEvidence carrying several
+// evidence links, where a later link references a missing Observation, must
+// leave the KnowledgeStore byte-identical to its pre-update snapshot.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+struct MultiLinkSecondInvalidProducer;
+
+impl SemanticUpdateProducer for MultiLinkSecondInvalidProducer {
+    fn produce(&mut self, observation: &Observation) -> Option<SemanticUpdate> {
+        let valid_obs = observation.id.clone();
+        Some(SemanticUpdate::ClaimWithEvidence {
+            claim: KnowledgeClaim {
+                id: "claim-multi-link".to_string(),
+                subject: observation.source_action_id.clone().unwrap_or_default(),
+                predicate: "execution_result".to_string(),
+                value: observation.summary.clone(),
+                status: KnowledgeClaimStatus::Observed,
+                scope: "b2-c4-multi-item-atomicity".to_string(),
+                evidence_refs: vec![valid_obs.clone()],
+            },
+            evidence: vec![
+                // Valid link: references the Observation that was just recorded.
+                EvidenceLink {
+                    observation_id: valid_obs,
+                    claim_id: "claim-multi-link".to_string(),
+                    relation: EvidenceRelation::Supports,
+                },
+                // Invalid link: references an Observation that does not exist.
+                EvidenceLink {
+                    observation_id: "ghost-observation".to_string(),
+                    claim_id: "claim-multi-link".to_string(),
+                    relation: EvidenceRelation::Supports,
+                },
+            ],
+        })
+    }
+}
+
+#[test]
+fn test_b2_c4_multi_item_claim_update_is_atomic() {
+    let goal = Goal::new("Verify multi-item claim update atomicity");
+    let state = AgentState::new(goal);
+
+    let response = b2_c4_process_decision("act-multi-link");
+    let fake_provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
+    let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result(
+        "act-multi-link",
+        ActionResult::success("act-multi-link", "build succeeded"),
+    );
+
+    let mut agent_loop = AgentLoop::new(state).with_semantic_update_pipeline(
+        MultiLinkSecondInvalidProducer,
+        KnowledgeStoreSemanticUpdater::new(),
+    );
+
+    let before = agent_loop.knowledge_store().clone();
+
+    let err = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect_err("a later invalid evidence link must fail the whole update");
+
+    assert!(
+        matches!(err, LoopError::SemanticUpdate(_)),
+        "expected a semantic update error, got: {err:?}"
+    );
+
+    // The failure must come specifically from the *second* (invalid) link.
+    // Pinning the exact error proves the earlier, valid link was accepted into
+    // the candidate state before the update was rejected as a whole.
+    match &err {
+        LoopError::SemanticUpdate(SemanticUpdateError::KnowledgeStore(
+            KnowledgeStoreError::MissingObservation(missing),
+        )) => assert_eq!(missing, "ghost-observation"),
+        other => panic!("expected MissingObservation('ghost-observation'), got: {other:?}"),
+    }
+
+    // The Observation recorded before the semantic update remains historical evidence.
+    let obs = agent_loop
+        .observation_store()
+        .get("obs-1")
+        .expect("obs-1 must remain in the authoritative observation store");
+    assert_eq!(obs.source_action_id.as_deref(), Some("act-multi-link"));
+    assert_eq!(obs.summary, "build succeeded");
+
+    // No partial mutation: neither the claim nor the first (valid) link is retained.
+    let after = agent_loop.knowledge_store();
+    assert_eq!(after, &before, "KnowledgeStore must be unchanged");
+    assert!(after.claims().is_empty());
+    assert!(after.evidence().is_empty());
+    assert!(after.unknowns().is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Test 17 (T2): Duplicate identifier at the semantic boundary.
+// A repeated claim identifier fails deterministically and must not modify the
+// state produced by the first successful update.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+struct DuplicateClaimProducer {
+    step: usize,
+}
+
+impl SemanticUpdateProducer for DuplicateClaimProducer {
+    fn produce(&mut self, observation: &Observation) -> Option<SemanticUpdate> {
+        self.step += 1;
+        let obs_id = observation.id.clone();
+        Some(SemanticUpdate::ClaimWithEvidence {
+            claim: KnowledgeClaim {
+                // Intentionally identical on every step.
+                id: "claim-duplicate".to_string(),
+                subject: observation.source_action_id.clone().unwrap_or_default(),
+                predicate: "execution_result".to_string(),
+                value: observation.summary.clone(),
+                status: KnowledgeClaimStatus::Observed,
+                scope: "b2-c4-duplicate-claim".to_string(),
+                evidence_refs: vec![obs_id.clone()],
+            },
+            evidence: vec![EvidenceLink {
+                observation_id: obs_id,
+                claim_id: "claim-duplicate".to_string(),
+                relation: EvidenceRelation::Supports,
+            }],
+        })
+    }
+}
+
+#[test]
+fn test_b2_c4_duplicate_claim_identifier_fails_deterministically() {
+    let goal = Goal::new("Verify duplicate claim identifier rejection");
+    let state = AgentState::new(goal);
+
+    let response_1 = b2_c4_process_decision("act-dup-1");
+    let response_2 = b2_c4_process_decision("act-dup-2");
+    let fake_provider = FakeLlmProvider::with_responses(vec![Ok(response_1), Ok(response_2)]);
+    let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result(
+        "act-dup-1",
+        ActionResult::success("act-dup-1", "first build"),
+    );
+    runtime.add_result(
+        "act-dup-2",
+        ActionResult::success("act-dup-2", "second build"),
+    );
+
+    let mut agent_loop = AgentLoop::new(state).with_semantic_update_pipeline(
+        DuplicateClaimProducer { step: 0 },
+        KnowledgeStoreSemanticUpdater::new(),
+    );
+
+    // Step 1: the first update succeeds and establishes the baseline Knowledge state.
+    let outcome_1 = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 1 must succeed");
+    assert_eq!(outcome_1, LoopStepOutcome::Continue);
+
+    let after_first = agent_loop.knowledge_store().clone();
+    assert_eq!(after_first.claims().len(), 1);
+    assert_eq!(after_first.evidence().len(), 1);
+
+    // Step 2: the same claim identifier must be rejected deterministically.
+    let err = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect_err("a duplicate claim identifier must be rejected");
+
+    assert!(
+        matches!(err, LoopError::SemanticUpdate(_)),
+        "expected a semantic update error, got: {err:?}"
+    );
+    match &err {
+        LoopError::SemanticUpdate(SemanticUpdateError::KnowledgeStore(
+            KnowledgeStoreError::DuplicateClaimId(id),
+        )) => assert_eq!(id, "claim-duplicate"),
+        other => panic!("expected DuplicateClaimId('claim-duplicate'), got: {other:?}"),
+    }
+
+    // The Observation from the failing step is still retained as evidence.
+    assert!(
+        agent_loop.observation_store().get("obs-2").is_some(),
+        "obs-2 must remain in the authoritative observation store"
+    );
+
+    // The first update's Knowledge state is preserved with no additional mutation.
+    let after_second = agent_loop.knowledge_store();
+    assert_eq!(
+        after_second, &after_first,
+        "KnowledgeStore must be unchanged"
+    );
+    assert_eq!(after_second.claims().len(), 1);
+    assert_eq!(after_second.evidence().len(), 1);
+    assert!(
+        after_second
+            .evidence()
+            .iter()
+            .all(|link| link.observation_id == "obs-1"),
+        "no evidence link may reference the rejected second observation"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 18 (T3): Unknown update failure.
+// A repeated Unknown identifier must fail without partially mutating the store,
+// and the triggering Observation must still be retained.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+struct DuplicateUnknownProducer;
+
+impl SemanticUpdateProducer for DuplicateUnknownProducer {
+    fn produce(&mut self, _observation: &Observation) -> Option<SemanticUpdate> {
+        // Intentionally identical on every step.
+        Some(SemanticUpdate::Unknown(Unknown {
+            id: "unknown-duplicate".to_string(),
+            subject: "web-server".to_string(),
+            scope: "b2-c4-duplicate-unknown".to_string(),
+            question: "Is TLS 1.3 enabled?".to_string(),
+        }))
+    }
+}
+
+#[test]
+fn test_b2_c4_duplicate_unknown_identifier_preserves_observation() {
+    let goal = Goal::new("Verify duplicate unknown identifier rejection");
+    let state = AgentState::new(goal);
+
+    let response_1 = b2_c4_process_decision("act-unknown-1");
+    let response_2 = b2_c4_process_decision("act-unknown-2");
+    let fake_provider = FakeLlmProvider::with_responses(vec![Ok(response_1), Ok(response_2)]);
+    let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result(
+        "act-unknown-1",
+        ActionResult::success("act-unknown-1", "first probe"),
+    );
+    runtime.add_result(
+        "act-unknown-2",
+        ActionResult::success("act-unknown-2", "second probe"),
+    );
+
+    let mut agent_loop = AgentLoop::new(state).with_semantic_update_pipeline(
+        DuplicateUnknownProducer,
+        KnowledgeStoreSemanticUpdater::new(),
+    );
+
+    agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect("step 1 must succeed");
+
+    let after_first = agent_loop.knowledge_store().clone();
+    assert_eq!(after_first.unknowns().len(), 1);
+    assert!(after_first.claims().is_empty());
+    assert!(after_first.evidence().is_empty());
+
+    let err = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect_err("a duplicate unknown identifier must be rejected");
+
+    assert!(
+        matches!(err, LoopError::SemanticUpdate(_)),
+        "expected a semantic update error, got: {err:?}"
+    );
+    match &err {
+        LoopError::SemanticUpdate(SemanticUpdateError::KnowledgeStore(
+            KnowledgeStoreError::DuplicateUnknownId(id),
+        )) => assert_eq!(id, "unknown-duplicate"),
+        other => panic!("expected DuplicateUnknownId('unknown-duplicate'), got: {other:?}"),
+    }
+
+    assert!(
+        agent_loop.observation_store().get("obs-2").is_some(),
+        "obs-2 must remain in the authoritative observation store"
+    );
+
+    let after_second = agent_loop.knowledge_store();
+    assert_eq!(
+        after_second, &after_first,
+        "KnowledgeStore must be unchanged"
+    );
+    assert_eq!(after_second.unknowns().len(), 1);
+    assert!(after_second.claims().is_empty());
+    assert!(after_second.evidence().is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Test 19 (T4): Deterministic repeated failure.
+// Identical inputs must produce an identical failure outcome, and the
+// KnowledgeStore must not drift between runs.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug)]
+struct AlwaysInvalidEvidenceProducer;
+
+impl SemanticUpdateProducer for AlwaysInvalidEvidenceProducer {
+    fn produce(&mut self, _observation: &Observation) -> Option<SemanticUpdate> {
+        Some(SemanticUpdate::Evidence(EvidenceLink {
+            observation_id: "non-existent-observation-id".to_string(),
+            claim_id: "non-existent-claim-id".to_string(),
+            relation: EvidenceRelation::Supports,
+        }))
+    }
+}
+
+/// Runs one closed-loop step that is guaranteed to fail during the semantic
+/// update, returning the resulting error and the resulting KnowledgeStore.
+fn b2_c4_run_expected_semantic_failure(
+    producer: AlwaysInvalidEvidenceProducer,
+) -> (LoopError, InMemoryKnowledgeStore) {
+    let state = AgentState::new(Goal::new("Verify deterministic repeated failure"));
+    let response = b2_c4_process_decision("act-repeat");
+    let fake_provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
+    let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result(
+        "act-repeat",
+        ActionResult::success("act-repeat", "build succeeded"),
+    );
+
+    let mut agent_loop = AgentLoop::new(state)
+        .with_semantic_update_pipeline(producer, KnowledgeStoreSemanticUpdater::new());
+
+    let err = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect_err("the semantic update must fail deterministically");
+
+    assert!(
+        agent_loop.observation_store().get("obs-1").is_some(),
+        "the observation must be retained even when the semantic update fails"
+    );
+
+    (err, agent_loop.knowledge_store().clone())
+}
+
+#[test]
+fn test_b2_c4_repeated_identical_failure_is_deterministic() {
+    let (first_error, first_knowledge) =
+        b2_c4_run_expected_semantic_failure(AlwaysInvalidEvidenceProducer);
+    let (second_error, second_knowledge) =
+        b2_c4_run_expected_semantic_failure(AlwaysInvalidEvidenceProducer);
+
+    // Identical inputs must produce an identical, explicitly typed error.
+    assert_eq!(first_error, second_error);
+    assert_eq!(first_error.to_string(), second_error.to_string());
+    assert!(
+        matches!(first_error, LoopError::SemanticUpdate(_)),
+        "expected a semantic update error, got: {first_error:?}"
+    );
+
+    // Neither run may leave Knowledge state behind, and the two runs must agree.
+    assert!(first_knowledge.claims().is_empty());
+    assert!(first_knowledge.evidence().is_empty());
+    assert!(first_knowledge.unknowns().is_empty());
+    assert_eq!(first_knowledge, second_knowledge);
+}
+
+// ---------------------------------------------------------------------------
+// Test 20 (T5): Step-level state consistency after a semantic update failure.
+//
+// This asserts the behaviour that already exists. It intentionally does not
+// assert any recovery, retry, or continuation semantics.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_b2_c4_state_consistency_after_semantic_update_failure() {
+    let goal = Goal::new("Verify state consistency after semantic failure");
+    let state = AgentState::new(goal);
+
+    let response = b2_c4_process_decision("act-state-consistency");
+    let fake_provider = FakeLlmProvider::with_responses(vec![Ok(response)]);
+    let mut decision_source = ProviderDecisionSource::new(fake_provider);
+
+    let mut runtime = FakeRuntime::new();
+    runtime.add_result(
+        "act-state-consistency",
+        ActionResult::success("act-state-consistency", "build succeeded"),
+    );
+
+    let mut agent_loop = AgentLoop::new(state).with_semantic_update_pipeline(
+        AlwaysInvalidEvidenceProducer,
+        KnowledgeStoreSemanticUpdater::new(),
+    );
+
+    let err = agent_loop
+        .step(&mut decision_source, &mut runtime)
+        .expect_err("the semantic update must fail");
+    assert!(matches!(err, LoopError::SemanticUpdate(_)));
+
+    // The authoritative Observation is retained.
+    let obs = agent_loop
+        .observation_store()
+        .get("obs-1")
+        .expect("obs-1 must remain in the authoritative observation store");
+    assert_eq!(
+        obs.source_action_id.as_deref(),
+        Some("act-state-consistency")
+    );
+
+    // The bounded compatibility view in AgentState reflects the same step.
+    let agent_state = agent_loop.state();
+    assert_eq!(agent_state.recent_observations.len(), 1);
+    assert_eq!(agent_state.recent_observations[0].id, "obs-1");
+    assert_eq!(agent_state.recent_actions.len(), 1);
+    assert_eq!(agent_state.recent_actions[0].id, "act-state-consistency");
+    assert_eq!(agent_loop.current_step(), 1);
+
+    // The AgentState remains internally consistent after the failed step.
+    agent_state
+        .validate()
+        .expect("AgentState must remain valid after a semantic update failure");
+
+    // No semantic state was produced.
+    assert!(agent_loop.knowledge_store().is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Test 21 (T6): ContextCompiler / checkpoint boundary.
+// Context compilation must not mutate the KnowledgeStore, and checkpoint
+// restoration must not fabricate Knowledge history or leave dangling
+// evidence references. No Knowledge persistence is introduced.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_b2_c4_context_compiler_is_read_only_for_knowledge() {
+    let state = AgentState::new(Goal::new("Verify context compiler read-only boundary"));
+
+    let mut observations = InMemoryObservationStore::new();
+    observations
+        .record(Observation::new(
+            "obs-1",
+            ObservationKind::ActionResult,
+            "build succeeded",
+        ))
+        .expect("record observation");
+
+    let mut knowledge = InMemoryKnowledgeStore::new();
+    knowledge
+        .record_claim_with_evidence(
+            KnowledgeClaim {
+                id: "claim-readonly".to_string(),
+                subject: "act-readonly".to_string(),
+                predicate: "result".to_string(),
+                value: "succeeded".to_string(),
+                status: KnowledgeClaimStatus::Observed,
+                scope: "b2-c4-read-only".to_string(),
+                evidence_refs: vec!["obs-1".to_string()],
+            },
+            vec![EvidenceLink {
+                observation_id: "obs-1".to_string(),
+                claim_id: "claim-readonly".to_string(),
+                relation: EvidenceRelation::Supports,
+            }],
+            &observations,
+        )
+        .expect("record claim with evidence");
+
+    let before = knowledge.clone();
+
+    let compiler = DefaultContextCompiler::default();
+    let first = compiler
+        .compile_with_knowledge(&state, &observations, &knowledge)
+        .expect("compile must succeed");
+    let second = compiler
+        .compile_with_knowledge(&state, &observations, &knowledge)
+        .expect("compile must succeed");
+
+    // Compilation is deterministic...
+    assert_eq!(first, second);
+    assert_eq!(first.knowledge_claims.len(), 1);
+    assert_eq!(first.evidence_links.len(), 1);
+
+    // ...and it must not mutate the authoritative KnowledgeStore.
+    assert_eq!(
+        knowledge, before,
+        "ContextCompiler must not mutate KnowledgeStore"
+    );
+    assert_eq!(knowledge.claims().len(), 1);
+    assert_eq!(knowledge.evidence().len(), 1);
+}
+
+#[test]
+fn test_b2_c4_checkpoint_restore_does_not_fabricate_knowledge() {
+    // A checkpoint carrying Observation history but no Knowledge payload.
+    let mut restored_state =
+        AgentState::new(Goal::new("Verify checkpoint restore Knowledge boundary"));
+    restored_state.record_observation(Observation::new(
+        "obs-1",
+        ObservationKind::ActionResult,
+        "build succeeded",
+    ));
+    restored_state.record_action(Action::new("act-ckpt", ActionType::Execute));
+    let checkpoint = StateCheckpoint::new("ckpt-b2-c4", 1, restored_state);
+
+    let restored = AgentLoop::from_checkpoint(&checkpoint);
+
+    // Observation history retained by the checkpoint is present.
+    assert_eq!(restored.observation_store().len(), 1);
+    assert!(restored.observation_store().get("obs-1").is_some());
+
+    // Knowledge is NOT recovered, and nothing claims it was.
+    assert!(restored.knowledge_store().is_empty());
+
+    // Because the restored KnowledgeStore is empty, compilation cannot produce
+    // a dangling evidence reference and must still succeed.
+    let compiler = DefaultContextCompiler::default();
+    let compiled = compiler
+        .compile_with_knowledge(
+            restored.state(),
+            restored.observation_store(),
+            restored.knowledge_store(),
+        )
+        .expect("compilation after checkpoint restore must succeed");
+
+    assert!(compiled.knowledge_claims.is_empty());
+    assert!(compiled.evidence_links.is_empty());
+    assert!(compiled.knowledge_unknowns.is_empty());
+    assert_eq!(compiled.observations.len(), 1);
 }
