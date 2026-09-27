@@ -6,7 +6,7 @@ Current Implementation Progress:
 - B2-C1 (Core Semantic Update Boundary): **COMPLETED**
 - B2-C2 (AgentLoop Integration Point): **COMPLETED**
 - B2-C3 (Deterministic Closed-Loop Integration): **COMPLETED / VERIFIED**
-- B2-C4 (Failure and Atomicity Boundary Verification): **NOT IMPLEMENTED / PENDING**
+- B2-C4 (Failure and Atomicity Boundary Verification): **COMPLETED / VERIFIED**
 
 ## 1. Purpose
 
@@ -482,9 +482,9 @@ B2-C is subdivided into:
 - B2-C1: Core Semantic Update Boundary (COMPLETED)
 - B2-C2: AgentLoop Integration Point (COMPLETED)
 - B2-C3: Deterministic Closed-Loop Integration (COMPLETED / VERIFIED)
-- B2-C4: Failure and Atomicity Boundary Verification (NOT IMPLEMENTED / PENDING)
+- B2-C4: Failure and Atomicity Boundary Verification (COMPLETED / VERIFIED)
 
-Currently, B2-C1, B2-C2, and B2-C3 have been implemented and verified. B2-C4 must not be claimed as complete until implementation and verification are performed. The entire B2-C increment is not marked complete until B2-C4 passes its release gate.
+Currently, B2-C1, B2-C2, B2-C3, and B2-C4 have been implemented and verified. B2-C has passed its release gate. B2-C4 added verification-only deterministic integration tests and did not change production `src/`.
 
 Approval of this document does not automatically approve C, D, E, F, or G roadmap items, and does not create a new implementation Stage.
 

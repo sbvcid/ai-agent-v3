@@ -118,7 +118,7 @@ active conversation
 
 `10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` 現已正式建立並標記為 **APPROVED STABLE DESIGN**。它只定義 B2 implementation boundary；B2-A、B2-B、B2-C 仍須各自取得使用者明確批准後才能實作，不自動建立 Stage 10。
 
-`11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` 現已正式建立並標記為 **APPROVED STABLE DESIGN**。它只定義 B2-C Semantic Update / Closed-Loop Integration 的 implementation boundary；目前已完成 B2-C1、B2-C2 與 B2-C3，B2-C4 尚未實作，且不自動建立新的 Stage。
+`11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` 現已正式建立並標記為 **APPROVED STABLE DESIGN**。它只定義 B2-C Semantic Update / Closed-Loop Integration 的 implementation boundary；B2-C1 至 B2-C4 均已完成並通過驗證，B2-C 已通過 release gate 並正式關閉，且不自動建立新的 Stage。
 
 未來正式建立新的 stable document 時，必須同時：
 
@@ -269,7 +269,7 @@ src/core/types.rs
 
 以及直接相關 tests。
 
-`11` 已獲明確批准為 stable design，目前已完成 C1、C2 與 C3，C4 尚未實作；不得將其視為整體無限制授權。
+`11` 已獲明確批准為 stable design，C1 至 C4 均已完成並通過驗證；B2-C 已關閉，但這不代表後續 C–G roadmap item 獲得授權。任何新 increment 仍須各自取得明確批准。
 
 ### 修改 Runtime Capability
 

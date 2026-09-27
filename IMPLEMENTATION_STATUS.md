@@ -15,8 +15,9 @@ B2-B — Context / Provider Integration: VERIFIED / RELEASE GATE PASSED
 B2-C1 — Core Semantic Update Boundary: COMPLETED
 B2-C2 — AgentLoop Integration Point: COMPLETED / VERIFIED
 B2-C3 — Deterministic Closed-Loop Integration: COMPLETED / VERIFIED / RELEASE GATE PASSED
-B2-C4 — Failure and Atomicity Boundary Verification: NOT IMPLEMENTED / PENDING
-Current overall state: deterministic closed-loop foundation + observation/context foundation + Evidence/Knowledge semantic foundation + Knowledge-aware provider context path + Core semantic update boundary & AgentLoop integration point (B2-C1 & B2-C2) + verified end-to-end closed-loop integration (B2-C3)
+B2-C4 — Failure and Atomicity Boundary Verification: COMPLETED / VERIFIED / RELEASE GATE PASSED
+B2 — Knowledge Context Integration (B2-A, B2-B, B2-C): COMPLETED / RELEASE GATE PASSED
+Current overall state: deterministic closed-loop foundation + observation/context foundation + Evidence/Knowledge semantic foundation + Knowledge-aware provider context path + Core semantic update boundary & AgentLoop integration point (B2-C1 & B2-C2) + verified end-to-end closed-loop integration (B2-C3) + verified failure/atomicity boundary (B2-C4)
 ```
 
 **Stage 10 尚未定義。** B1 與 B2 是經批准的 Agent Core semantic implementation increments，不自動建立 Stage 10。
@@ -35,8 +36,9 @@ Latest B2-B implementation commits: 5add9065, e49e64dc, 6b2e092
 Latest B2-C1 implementation commits: 5627f9a, cf05d19, c0d8bfa, 77ae90a, cb066ac, 30e0138
 Latest B2-C2 implementation commits: 30bef1f, 6d779f6, 5a58f6c, 31c5ee3, a89979d, 7b97eda, f500264, 648b468
 Latest B2-C3 implementation commit: ffa9ea6 test: complete B2-C3 deterministic closed-loop integration
-Latest pushed commit: ffa9ea6
-Latest verification status: B2-C3 VERIFIED / RELEASE GATE PASSED (checks & tests pass, 121 unit tests, 15 closed-loop tests)
+Latest B2-C4 implementation commit: 21eff65 test: complete B2-C4 failure and atomicity verification
+Latest pushed commit: 21eff65
+Latest verification status: B2-C4 VERIFIED / RELEASE GATE PASSED (checks & tests pass, 121 unit tests, 22 closed-loop tests)
 ```
 
 以上 commit 是狀態導航資訊，不是永久真相。新的 AI session 必須先執行：
@@ -325,7 +327,7 @@ doc-tests: 0
 
 ## 6. B2 — Knowledge Context Integration
 
-B2 依 `docs/10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` 與 `docs/11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` 實作。B2 包含 B2-A、B2-B 與 B2-C。目前已完成 B2-A、B2-B、B2-C1、B2-C2、B2-C3；B2-C4 尚未實作。不要把整個 B2-C 標記為完成，不建立新的 Stage。
+B2 依 `docs/10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` 與 `docs/11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` 實作。B2 依 `docs/10` §3 定義為 B2-A、B2-B、B2-C 三個 sub-increments。目前三者皆已完成並通過驗證，B2 已通過 release gate。
 
 ### B2-A — Ownership / Data Path
 
@@ -439,7 +441,7 @@ Latest formatting commit: 6b2e092
 ### B2-C — Closed-loop Semantic Integration
 
 B2-C 依 `docs/11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` 實作。
-目前進度：B2-C1、B2-C2 與 B2-C3 已完成並通過驗證；B2-C4 尚未實作。整個 B2-C 尚未完成，不自動建立新的 Stage。
+目前進度：B2-C1、B2-C2、B2-C3 與 B2-C4 皆已完成並通過驗證。**B2-C 已通過 release gate 並正式關閉。**
 
 #### B2-C1 — Core Semantic Update Boundary
 
@@ -535,9 +537,65 @@ test doubles tests: 6 passed
 doc-tests: 0
 ```
 
-- **不要把整個 B2-C 標記為完成。**
 - **不要建立新的 Stage。**
-- B2-C4 尚未實作，必須等待使用者明確批准。
+
+#### B2-C4 — Failure and Atomicity Boundary Verification
+
+**COMPLETED / VERIFIED / RELEASE GATE PASSED**
+
+性質：**verification-only increment**。B2-C4 不新增 production 行為，也不新增 semantic capability；它把 B1（KnowledgeStore invariants）與 B2-C1／B2-C2（semantic update boundary + Observation-first ordering）已實作的 failure／atomicity 保證提升為具測試證據的結論。
+
+完成：
+- 新增 7 個 deterministic integration tests（`tests/closed_loop_tests.rs`）：
+  - `test_b2_c4_multi_item_claim_update_is_atomic()`（T1）
+  - `test_b2_c4_duplicate_claim_identifier_fails_deterministically()`（T2）
+  - `test_b2_c4_duplicate_unknown_identifier_preserves_observation()`（T3）
+  - `test_b2_c4_repeated_identical_failure_is_deterministic()`（T4）
+  - `test_b2_c4_state_consistency_after_semantic_update_failure()`（T5）
+  - `test_b2_c4_context_compiler_is_read_only_for_knowledge()`（T6a）
+  - `test_b2_c4_checkpoint_restore_does_not_fabricate_knowledge()`（T6b）
+- 涵蓋的保證：
+  - **T1 Multi-item atomicity**：單一 `ClaimWithEvidence` 攜帶多個 evidence links，前一個合法、後一個引用不存在的 Observation。整個 update 被拒絕，合法 link 亦不得殘留。
+  - **T2 Duplicate claim identifier**：第二次相同 claim id 產生 `DuplicateClaimId`；第一次的 Knowledge state 完整保留，無額外 mutation。
+  - **T3 Duplicate Unknown identifier**：第二次相同 Unknown id 產生 `DuplicateUnknownId`；Observation 保留，KnowledgeStore 無部分 mutation。
+  - **T4 Deterministic repeated failure**：相同輸入兩次獨立執行，error 完全相同，KnowledgeStore 無漂移。
+  - **T5 Step-level state consistency**：semantic update 失敗後，Observation 仍在 authoritative store、`AgentState.recent_observations`／`recent_actions` 反映該 step、`AgentState::validate()` 仍通過。
+  - **T6a ContextCompiler 唯讀**：`compile_with_knowledge()` 前後 KnowledgeStore 完全相等，且輸出 deterministic。
+  - **T6b Checkpoint 邊界**：`AgentLoop::from_checkpoint()` 後 KnowledgeStore 為空（未虛構 recovery），編譯成功且不產生 dangling evidence reference。
+- 斷言方式：以整個 `KnowledgeStore` 的 `PartialEq` 快照比較（claims + evidence + unknowns），而非僅比較數量；T1／T2／T3 另釘住確切 `KnowledgeStoreError` variant，以證明失敗源自預期的那一條檢查。
+- **production `src/` 未因 B2-C4 修改。** Commit 僅包含 `tests/closed_loop_tests.rs`（+556 / −6；6 行刪除全為 import block 重排，C3 既有 15 個 test body 零修改）。
+- 完成 commit：`21eff65 test: complete B2-C4 failure and atomicity verification`。
+
+B2-C4 驗證結果：
+
+```text
+cargo fmt --check                                             PASS
+cargo clippy --all-targets --all-features -- -D warnings      PASS（0 warnings）
+cargo check                                                   PASS
+cargo test                                                    PASS
+git diff --check                                              PASS
+```
+
+測試結果：
+
+```text
+121 unit tests passed / 0 failed
+22 closed-loop tests passed / 0 failed（既有 15 + B2-C4 新增 7）
+11 filesystem/process integration tests passed / 0 failed
+Ollama real integration tests: 3 ignored（需要執行中的 Ollama 環境）
+Ollama provider tests: 2 passed
+process execution tests: 10 passed
+schema checkpoint tests: 6 passed
+test doubles tests: 6 passed
+doc-tests: 0
+```
+
+#### B2-C 關閉時的已知實作限制
+
+以下為 implementation reality 的誠實記錄，不是 stable design 變更，也不阻擋 B2-C 關閉：
+
+- **Hypothesis claim 路徑未由 semantic update boundary 暴露。** `docs/11` §6.1 描述「A Hypothesis claim may be recorded without Evidence」，但 `SemanticUpdate` enum 僅有 `ClaimWithEvidence`／`Evidence`／`Unknown` 三個 variant，`KnowledgeStore::record_claim()`（唯一支援無 evidence claim 的路徑）目前未被 semantic boundary 呼叫。此缺口屬 B2-C1 範圍，非 B2-C4 範圍，實作時刻意未處理。
+- **semantic update 失敗時 `AgentLoop::step()` 提前返回。** `apply_semantic_update()` 失敗會以 `?` 提前 return，因此不會執行 step 尾端的 `AgentState::validate()`。失敗後的 `AgentState` 經 T5 驗證仍有效，但此為目前實際行為；C4 刻意未修改 AgentLoop failure semantics。
 
 ### B2 邊界
 
@@ -563,6 +621,8 @@ Provider Adapter
 
 B2-A、B2-B、B2-C1、B2-C2 已建立 ownership、context propagation 以及 Observation-first 的語意更新接入點。
 端到端的 closed-loop integration 驗證（B2-C3）已完成並通過 release gate：上述完整資料路徑已由 4 個 deterministic integration tests 驗證。
+failure／atomicity 邊界驗證（B2-C4）已完成並通過 release gate：多項更新、duplicate identifier、重複失敗決定性、compiler 唯讀與 checkpoint 邊界共 7 個 deterministic integration tests。
+`docs/10` §11 的 B2 Release Gate 全部 21 條 acceptance criteria 皆已有對應證據；**B2 已正式關閉。**
 B2 尚未建立生產級 reasoning producer、Hypothesis lifecycle、adaptive recovery 或其他 C–G 能力。
 
 ## 7. Current Architecture Boundary
@@ -628,20 +688,21 @@ Agent Core 不得依賴 Windows-specific implementation details。
 
 Provider 必須保持可替換。
 
-上述資料流已不再是僅有單元測試覆蓋的設計意圖：`ActionResult` → `Observation` → `ObservationStore` → `SemanticUpdate` → `KnowledgeStore` → `ContextCompiler` → `ProviderRequest` 的完整閉環已由 B2-C3 的 deterministic integration tests 驗證通過。
+上述資料流已不再是僅有單元測試覆蓋的設計意圖：`ActionResult` → `Observation` → `ObservationStore` → `SemanticUpdate` → `KnowledgeStore` → `ContextCompiler` → `ProviderRequest` 的完整閉環已由 B2-C3 的 deterministic integration tests 驗證通過。該資料流的 failure／atomicity 邊界（Observation-first ordering、多項更新無部分寫入、duplicate identifier 決定性拒絕、compiler 唯讀、checkpoint 不虛構 Knowledge）已由 B2-C4 的 7 個 deterministic integration tests 驗證通過。
 
 ## 8. Remaining Long-Term Work
 
-以下代表 **尚未完整實作的長期能力**，不是說第一版 Observation Store / Context Compiler / B1 / B2-A / B2-B foundation 不存在：
+以下代表 **尚未完整實作的長期能力**，不是說第一版 Observation Store / Context Compiler / B1 / B2 foundation 不存在：
 
 ### Agent Core semantic direction
 
-- B2-C4 — Failure and Atomicity Boundary verification（尚未實作）
 - Hypothesis lifecycle
 - Progress detection
 - Loop detection
 - Adaptive recovery
 - stronger Goal Verification
+- Knowledge checkpoint persistence（`docs/10` §13 明列為獨立 design problem）
+- Hypothesis claim 的 semantic boundary 路徑（見「B2-C 關閉時的已知實作限制」）
 
 ### Runtime / capability direction
 
@@ -679,12 +740,12 @@ docs/README.md
 
 ## 10. Current Next Step
 
-B1、B2-A、B2-B、B2-C1、B2-C2、B2-C3 已完成並通過驗證。
+B1 與 B2（B2-A、B2-B、B2-C1、B2-C2、B2-C3、B2-C4）已完成並通過驗證。
 
-最新完成 commit 為 `ffa9ea6 test: complete B2-C3 deterministic closed-loop integration`。
+最新完成 commit 為 `21eff65 test: complete B2-C4 failure and atomicity verification`。
 
-目前下一個 increment 為 **B2-C4 — Failure and Atomicity Boundary Verification**。
+**B2 已正式關閉。** `docs/10` §3 定義的 B2-A / B2-B / B2-C 三個 sub-increments 皆已完成並通過 release gate。
 
-**明確指出：B2-C4 尚未實作，整個 B2-C 尚未完成，亦不建立新的 Stage。**
+**目前沒有已定義的下一個 increment。** `docs/10` 未定義 B2-D，`docs/11` 已關閉，`docs/08` roadmap 的 C–G 項目仍各自需要獨立的 stable design、scope、non-goals、acceptance criteria 與使用者明確批准。
 
-目前沒有自動開始 B2-C4 的指令。Repository 停在目前已驗證的 B2-C3 baseline，等待使用者對 B2-C4 的明確批准與實作指令。
+不建立新的 Stage，也不因 B2 關閉而自動開始任何後續工作。Repository 停在目前已驗證的 B2 baseline，等待使用者指定下一個 increment 並提供其 approved design boundary。
