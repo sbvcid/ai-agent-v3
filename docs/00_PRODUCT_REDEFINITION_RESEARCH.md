@@ -53,7 +53,7 @@
 | Provider interpreter 嚴格驗證 | `interpreter.rs:69-98` | 15 unit |
 | JSON checkpoint + crash/resume | `checkpoint.rs` | 6 schema + 1 integration |
 
-**總計 199 個測試**（121 unit / 22 closed-loop / 11 fs / 10 process / 6 schema / 6 doubles / 2 provider / 3 ignored）。
+**總計 178 個測試通過**（121 unit / 22 closed-loop / 11 fs / 10 process / 6 schema / 6 doubles / 2 provider），另有 3 個 Ollama real integration tests ignored。
 
 B1 + B2 的資料路徑確實成立且有測試證據。ownership 邊界清晰，atomicity 經 C4 實際釘住。**這部分品質是好的。**
 
@@ -297,7 +297,7 @@ Environment
 | **Recovery** | | | ✅ | — | 強行留在 repo 會把 product thesis 拉回 2024。「failure 可以被 durable state 與 evidence 重建」才是正確的基礎設施答案 |
 | **EventTrace** | | ✅ | | **OTel / AG-UI event export** | 幾乎必然變成 OTel adapter。自建 schema 沒有護城河 |
 | **Interpreter** | | ✅ | | **Capability/sandbox boundary** | 從「解析模型輸出」變成「執行前的能力與權限檢查」 |
-| **Testing discipline** | ✅ | | | — | 199 tests、deterministic、failure/atomicity 有實證。**這是 repo 最被低估的資產**：它示範了如何用測試證明架構不變量。新產品沿用同樣紀律 |
+| **Testing discipline** | ✅ | | | — | 178 tests、deterministic、failure/atomicity 有實證。**這是 repo 最被低估的資產**：它示範了如何用測試證明架構不變量。新產品沿用同樣紀律 |
 | **Docs governance** | ✅ | | | — | stable design / current state / history / temporary 四層分離，與 `AGENTS.md` 一致。治理能力可攜 |
 
 ### 5.1 為什麼 `SemanticUpdate` 建議刪除（本研究最艱難的判斷）
@@ -515,7 +515,7 @@ Environment
 | `Unknown` / absence-of-evidence 語意 | 證據不足 → Uncertain，而非 Verified | **高** |
 | `EventTrace` | Canonical envelope 的雛形 | **中** |
 | `ValidationError` 模式 | 資料契約嚴格性 | **中** |
-| 199-test 測試紀律 | 新產品的品質基準 | **高（方法論）** |
+| 178-test 測試紀律 | 新產品的品質基準 | **高（方法論）** |
 | Docs governance | 沿用 | **高（方法論）** |
 | `AgentLoop` / `Runtime` / `SemanticUpdate` | **不需要** | 0% |
 
@@ -575,7 +575,7 @@ Environment
 - clone-validate-commit 原子性
 - `Unknown` 與 absence-of-evidence 的語意區別
 - 嚴格 `ValidationError` 契約
-- 199-test 測試紀律（證明架構不變量的能力）
+- 178-test 測試紀律（證明架構不變量的能力）
 - 文件治理方法論
 
 **降級（變成 adapter 或範例）**

@@ -39,7 +39,7 @@
 但這些**不足以證明應該繼續維護本專案**。所以本 repo 定位為：
 
 1. **架構研究紀錄** —— 一個有紀律的系統如何設計、實作、誠實驗證，然後在證據顯示前提失效時停止
-2. **Prototype** —— 199 個 deterministic tests，其中 11 個專門驗證 failure / atomicity 邊界
+2. **Prototype** —— 178 個 deterministic tests，其中 11 個專門驗證 failure / atomicity 邊界
 3. **未來新專案的參考** —— MIT license，可自由取用
 4. **研究與實驗結果的展示** —— 包含推翻自身原始設計的結論
 
@@ -61,7 +61,7 @@
 截至停止時的 checkpoint，實際通過驗證的是：
 
 ```text
-199 tests passed
+178 tests passed (+ 3 ignored)
   121 unit
    22 closed-loop integration   (含 B2-C3 端到端 4 個、B2-C4 failure/atomicity 7 個)
    11 filesystem / process integration
@@ -204,7 +204,7 @@ Temporary Context    = 現在正在做什麼
 ## 執行
 
 ```bash
-cargo test          # 199 tests
+cargo test          # 178 tests
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo check
