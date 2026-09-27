@@ -1,5 +1,21 @@
 # Agent Core Roadmap
 
+> ## ⚠️ NOT TAKEN — 這條 roadmap 沒有被走完，專案已停止
+>
+> 本 roadmap 描述的 C ~ G 能力（Hypothesis Lifecycle、Progress Detection、
+> Loop Detection、Adaptive Recovery、Stronger Goal Verification）**皆未實作**。
+>
+> 專案於 2026-09-28 停止開發，不再推進這條 roadmap。停止原因不是這些項目無法實作，
+> 而是重新研究 2026 年 Agent 生態後確認：這些項目全部屬於**會隨 LLM 能力提升而縮小的
+> 決策層職責**，而業界的實際演化方向是把 deterministic 職責移出 context、移進
+> execution / boundary 層。
+>
+> 詳細研究與判斷依據見
+> [`docs/00_PRODUCT_REDEFINITION_RESEARCH.md`](00_PRODUCT_REDEFINITION_RESEARCH.md)。
+>
+> 本文保留的價值在於：它是一份**依賴關係分析**，說明了為什麼這些能力在當時的架構下
+> 看起來是必要的 —— 而這個「必要性」正是後來被檢驗的對象。
+
 ## 1. Purpose
 
 This document records the intended dependency relationships and broad direction for Agent Core development after the first implementation cycle. It is a stable roadmap, not a task list and not a temporary implementation plan.

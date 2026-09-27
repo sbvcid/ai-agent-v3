@@ -1,8 +1,114 @@
 # AI Agent v3
 
+> ## ⚠️ ARCHIVED — 開發已於 2026-09-28 終止
+>
+> **本專案不再維護，也不接受以原始產品方向為目的的新功能開發。**
+> Issues 與 PR 不會被處理。程式碼以 MIT License 釋出，可自由取用。
+>
+> **停止原因不是技術不可行，而是原始產品假設已失效。**
+> 完整研究與判斷依據見 [`docs/00_PRODUCT_REDEFINITION_RESEARCH.md`](docs/00_PRODUCT_REDEFINITION_RESEARCH.md)。
+
+---
+
+## 為什麼停止
+
+本專案最初的目標是建立一個具備 **deterministic decision / planning / knowledge / execution loop** 的 Agent Core，用來補足當時 LLM 在自主決策與長期工作上的不足。
+
+在重新研究 2026 年 Agent 生態（OpenAI Codex、Anthropic Claude Code、Gemini CLI、OpenCode、MCP、A2A、Agent Skills、sandbox 與 durable execution 生態）之後，確認這個問題正在被通用 Agent、模型與官方 runtime 快速解決。因此，繼續把本專案發展成「另一個通用 Agent」並沒有足夠理由。
+
+三個最具決定性的外部觀察：
+
+1. **Anthropic 官方文件**明確區分 deterministic 與 interpretive 邊界 —— 寫在 `CLAUDE.md` 或 skill 裡的禁令「is a request, not a guarantee」，而 `PreToolUse` hook 的阻擋「is enforcement」。產業的共識是 harness 應該 thin、safe、replaceable，決策交給模型。
+2. **SWE-bench Verified** 這個業界評測基準，本身就是用「bare ReAct loop、無特殊 scaffold」來評估所有模型的。
+3. **OpenAI Codex 自己實作了一個 deterministic rejection circuit breaker**（連續 3 次拒絕即中止回合），並在文件中寫明其 LLM reviewer「is not a deterministic security guarantee」。
+
+也就是說：**Agent Core 只會在「決策」這個維度縮小，在「邊界」這個維度變厚。** 而本專案把架構建在會縮小的維度上。
+
+## 這個 repo 對你有什么用
+
+研究過程確認了幾個架構概念仍然有價值，它們被完整保留下來：
+
+- deterministic execution boundary
+- observation / evidence separation
+- provenance（`EvidenceLink` 必須指向存在的 record，dangling 是硬錯誤）
+- atomic state mutation（clone-validate-commit）
+- checkpoint / recovery
+- bounded runtime
+- verification 與 evidence 的分離
+
+但這些**不足以證明應該繼續維護本專案**。所以本 repo 定位為：
+
+1. **架構研究紀錄** —— 一個有紀律的系統如何設計、實作、誠實驗證，然後在證據顯示前提失效時停止
+2. **Prototype** —— 199 個 deterministic tests，其中 11 個專門驗證 failure / atomicity 邊界
+3. **未來新專案的參考** —— MIT license，可自由取用
+4. **研究與實驗結果的展示** —— 包含推翻自身原始設計的結論
+
+### 建議閱讀順序
+
+| 你想知道的 | 讀這份 |
+|---|---|
+| 為什麼停止、架構該怎麼重新評估 | [`docs/00_PRODUCT_REDEFINITION_RESEARCH.md`](docs/00_PRODUCT_REDEFINITION_RESEARCH.md) |
+| 實際做到什麼程度（含未完成部分） | [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) |
+| 原始目標與架構（歷史紀錄） | 本文下方 + [`docs/01_REQUIREMENTS.md`](docs/01_REQUIREMENTS.md) |
+| 設計原則與約束 | [`AGENTS.md`](AGENTS.md) / [`DEVELOPMENT_WORKFLOW.md`](DEVELOPMENT_WORKFLOW.md) |
+| 完整文件導航 | [`docs/README.md`](docs/README.md) |
+| 設計如何被推翻（Roadmap 走到底會怎樣） | [`docs/08_AGENT_CORE_ROADMAP.md`](docs/08_AGENT_CORE_ROADMAP.md) |
+
+> 註：`docs/06_IMPLEMENTATION_GAP_ANALYSIS.md` 與 `docs/08_AGENT_CORE_ROADMAP.md` 已被標記為 **superseded / not-taken**，內容保留作為歷史紀錄，不要當作現況。
+
+## 實際完成並經測試驗證的部分
+
+截至停止時的 checkpoint，實際通過驗證的是：
+
+```text
+199 tests passed
+  121 unit
+   22 closed-loop integration   (含 B2-C3 端到端 4 個、B2-C4 failure/atomicity 7 個)
+   11 filesystem / process integration
+   10 process execution
+    6 schema checkpoint
+    6 test doubles
+    2 ollama provider
+    3 ollama real integration (ignored — 需要執行中的 Ollama)
+```
+
+已實作並驗證的核心元件：
+
+- Canonical domain model 與驗證不變量
+- `ObservationStore`（authoritative observation 歷史）
+- `KnowledgeStore`（claim / evidence / unknown，含 **clone-validate-commit 原子 mutation**）
+- `SemanticUpdate` boundary 與 **Observation-first ordering**
+- `ContextCompiler`（bounded deterministic 編譯，對 Knowledge 唯讀）
+- `FilesystemRuntime`（sandbox + path safety）
+- `ProcessRuntime`（timeout + policy deny-list）
+- JSON checkpoint + crash resume
+- Provider interpreter 嚴格驗證
+- B1 → B2-C4 的完整設計 / 實作 / 驗證軌跡（見 `IMPLEMENTATION_STATUS.md`）
+
+## 必須誠實說明的限制
+
+這個 repo **無法執行一個真正自主的 agent**。以下是結構性事實，不是待辦事項：
+
+- `interpreter.rs` 只能產生 `AgentDecision::Act`。`Observe` / `Wait` / `Finish` 不可達。
+- `verify_goal()` 只被測試呼叫。provider-driven agent 結構上**無法達成 Done**。
+- 唯一的 production semantic producer 是 `NoOpSemanticUpdateProducer`。所有 KnowledgeClaim 都來自 test producer。
+- `AgentState` 的大部分語意欄位（`hypotheses` / `unknowns` / `environment_state` / `running_jobs` / `remaining_work`）**沒有任何 production 寫入點**。
+- `Runtime` trait 沒有 observation 能力 —— 不執行 Action 就無法取得環境資訊。
+- `AgentDecision::Observe` 會把 **LLM 自己的意圖字串偽造成 Observation** 並寫入權威 store（`agent_loop.rs`）。這是本研究報告中特別指出的反面教材：evidence 基礎設施自己作弊。
+
+這些限制在停止時被完整記錄在 `IMPLEMENTATION_STATUS.md`，**未被修補** —— 因為修補它們等於回到已被否定的產品方向。
+
+---
+
+# 以下為原始專案紀錄（2024–2026，已停止）
+
+以下內容保留作為架構設計的歷史紀錄。
+
+## 原始目標
+
 一個以 Rust 開發的本地 Autonomous AI Agent。
 
-本專案的目標不是建立固定 workflow，而是建立一個通用 Agent Core + Runtime，使 Agent 能夠：
+原始目標不是建立固定 workflow，而是建立一個通用 Agent Core + Runtime，使 Agent 能夠：
 
 - 理解使用者目標
 - 觀察電腦環境
@@ -30,56 +136,6 @@ Observation
 Persistence
 = continuity / recovery state
 ```
-
-## 目前狀態
-
-第一輪 implementation cycle 已完成至 Stage 9.4。
-
-第一個 post-cycle Agent Core increment：
-
-```text
-Observation Store + Context Compiler
-= COMPLETED
-```
-
-這代表第一版的 Observation Store 與 Context Compiler 基礎已經實作並通過驗證；它們的「完整長期能力」仍不是已完成項目。未來更完整的 observation、evidence、knowledge、hypothesis、progress、loop detection、adaptive recovery 等能力仍需依 stable design 逐步實作。
-
-目前已具備的主要能力：
-
-- Canonical Agent Core domain model
-- Deterministic Agent Loop
-- Mock LLM / Fake Runtime
-- JSON Checkpoint / Crash Resume foundation
-- Filesystem Runtime foundation
-- Process Runtime foundation
-- Ollama Provider
-- Provider Decision Source
-- LLM Decision Interpretation / Validation
-- Real Ollama Closed Loop
-- Observation Store foundation
-- Context Compiler foundation
-- Release Gate
-
-目前仍未完整實作的長期能力包括：
-
-- 更完整的 Observation / Context semantics
-- Evidence / Knowledge semantics
-- Hypothesis lifecycle
-- Progress detection
-- Loop detection
-- Adaptive recovery
-- Stronger goal verification
-- 完整 Environment Observation
-- Shell / Interactive Shell
-- 完整 Job Runtime
-- Engineering Runtime
-- Browser Runtime
-- GUI Runtime
-- 更完整 Network / System Runtime
-
-**Stage 10 尚未定義。** 不得從本 README、文件編號或 roadmap 自行推導下一個 implementation Stage。
-
-目前 repository 的實際完成狀態，以 `IMPLEMENTATION_STATUS.md`、source code、tests 與實際驗證結果共同判定。
 
 ## 目標架構
 
@@ -118,77 +174,44 @@ Agent Core
 - LLM output 必須經 Parse / Validate / Normalize / Policy validation 後才能執行。
 - 不保存 private chain-of-thought，只保存可驗證的 decision-relevant information。
 
-## 新 AI 進入 Repository 時
-
-新 AI **固定必讀以下 5 份入口文件，而且只先讀這 5 份**：
-
-```text
-AGENTS.md
-DEVELOPMENT_WORKFLOW.md
-IMPLEMENTATION_STATUS.md
-README.md
-docs/README.md
-```
-
-完成這 5 份後，不得自動讀完整個 `docs/`、`src/`、`tests/` 或 `history/`。
-
-接下來由 `docs/README.md` 判斷本次任務的「目前需要讀」文件：
-
-```text
-task-specific stable design
-        +
-direct interface / requirement / acceptance
-        +
-direct source
-        +
-direct tests
-```
-
-因此：
-
-```text
-必讀文件
-= 固定 5 份入口文件
-
-目前需要讀的文件
-= 由 docs/README.md 依本次 task 選出的最小必要 context
-```
-
-這個區分是本專案的固定治理規則；固定入口文件本身構成治理基線，不因未來新增 stable document 而例行修改。
-
-詳細導航與 task-specific reading set 見：
-
-```text
-docs/README.md
-```
-
 ## 文件治理
 
+這個專案在文件治理上投入了相當的紀律，是 repo 中值得學習的部分：
+
 ```text
-AGENTS.md
-→ AI 必須遵守的規則
-
-DEVELOPMENT_WORKFLOW.md
-→ 如何工作、驗證、恢復
-
-IMPLEMENTATION_STATUS.md
-→ 目前實作現況
-
-README.md
-→ 人類閱讀的專案入口與高層架構
-
-docs/README.md
-→ stable docs 的唯一導航入口
-
-docs/01~08
-→ 目前 baseline 中的 stable requirements / design / interface / acceptance / test / roadmap
-
-history/
-→ 歷史資料
+AGENTS.md                → AI 必須遵守的規則
+DEVELOPMENT_WORKFLOW.md  → 如何工作、驗證、恢復
+IMPLEMENTATION_STATUS.md → 實際實作現況（唯一現況來源）
+README.md                → 人類閱讀的專案入口
+docs/README.md           → stable docs 的唯一導航入口
+docs/01~11               → requirements / design / interfaces / acceptance / test / analysis / roadmap
+history/                 → 歷史資料
 ```
 
-`docs/01~08` 是目前治理基線中的 stable document baseline，不是永久且封閉的文件全集。未來新增 stable document 時，不需要為了更新文件清單而修改 `AGENTS.md`、`README.md` 或 `DEVELOPMENT_WORKFLOW.md`；只需在 `docs/README.md` 建立導航、閱讀依賴與唯一職責，並建立該 stable document 本身。
+核心區分是**四層分離**：
 
-不存在永久的 implementation-task 文件。一次性的 coding-agent prompt、debugging、暫時 workaround 與未批准想法留在 active conversation、status 或 history 的適當位置。
+```text
+Stable Design        = 系統「打算」變成什麼
+Current Implementation = repository「實際」是什麼
+History              = 之前發生了什麼
+Temporary Context    = 現在正在做什麼
+```
 
-新增 stable document 前，必須先確認它具有獨立且長期存在的職責，且不能由既有 stable document 合理承擔。文件編號是導航標籤，不代表 implementation Stage。
+這個區分讓「設計與實作不一致」變成可被看見與處理的問題，而不是被混淆掉的模糊地帶。
+
+`AGENTS.md` 與 `DEVELOPMENT_WORKFLOW.md` 原本是給 coding agent 看的運作規範；它們同時也是這個專案工程文化的紀錄，因此一併保留。
+
+## 執行
+
+```bash
+cargo test          # 199 tests
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo check
+```
+
+本專案是 **library crate**，沒有 `main.rs`、沒有 binary target、沒有 CI。測試是唯一的執行入口。
+
+## 授權
+
+MIT License，見 [`LICENSE`](LICENSE)。可自由取用、修改與再利用。

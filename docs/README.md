@@ -1,5 +1,13 @@
 # AI Agent v3 — Documentation Index
 
+> ## ⚠️ 本專案已於 2026-09-28 停止開發並封存
+>
+> 不再接受以原始產品方向為目的的新功能開發。若你是新接手的 AI 或開發者：
+> **先讀 [`00_PRODUCT_REDEFINITION_RESEARCH.md`](00_PRODUCT_REDEFINITION_RESEARCH.md)**，
+> 它說明了為什麼停止、停止前完成了什麼、以及現存的架構概念在什麼條件下仍有價值。
+>
+> 本文件以下的導航規則保留原樣，作為這個專案文件治理方式的紀錄。
+
 本文件是 `docs/` 的唯一導航入口。
 
 它不定義新的 Agent Core / Runtime 架構，也不定義 implementation task。它只回答兩個問題：
@@ -100,14 +108,15 @@ active conversation
 
 | 文件 | 唯一主要職責 | 何時讀 |
 |---|---|---|
+| `00_PRODUCT_REDEFINITION_RESEARCH.md` | **專案封存原因、2026 Agent 生態研究、既有架構的 keep / replace / delete 評估** | **任何新讀者的第一份文件** |
 | `01_REQUIREMENTS.md` | 系統需求與目標行為 | 需求、目標或驗收範圍需要確認時 |
 | `02_CONSTRUCTION.md` | 建構與實作原則 | 架構 / implementation 原則需要確認時 |
 | `03_INTERFACES.md` | 穩定語意介面與資料契約 | 修改 Core / Runtime / Provider 邊界時 |
 | `04_ACCEPTANCE_TESTS.md` | 行為驗收標準 | 實作或驗證需求時 |
 | `05_TEST_PLAN.md` | 測試與驗證方法 | 規劃或執行驗證時 |
-| `06_IMPLEMENTATION_GAP_ANALYSIS.md` | Target Design 與 Current Implementation 的差距 | 判斷缺口、依賴或 implementation boundary 時 |
+| `06_IMPLEMENTATION_GAP_ANALYSIS.md` | Target Design 與 Current Implementation 的差距 —— **⚠️ SUPERSEDED，內容過期** | 僅供理解當時的缺口判斷依據 |
 | `07_AGENT_CORE_OBSERVATION_INCREMENT_DESIGN.md` | Observation Store + Context Compiler 的穩定設計 | 涉及 Observation / Context 時 |
-| `08_AGENT_CORE_ROADMAP.md` | Agent Core 長期能力與依賴方向 | 判斷長期依賴與能力方向時 |
+| `08_AGENT_CORE_ROADMAP.md` | Agent Core 長期能力與依賴方向 —— **⚠️ NOT TAKEN，未被實作** | 僅供理解依賴關係分析 |
 | `09_AGENT_CORE_EVIDENCE_KNOWLEDGE_SEMANTICS_DESIGN.md` | Evidence / Knowledge / Unknown semantic foundation | 涉及 Evidence / Knowledge / Unknown 時 |
 | `10_B2_KNOWLEDGE_CONTEXT_INTEGRATION_INCREMENT_DESIGN.md` | B2 Knowledge Context Integration 的 implementation boundary、sub-increments 與 acceptance criteria | 實作 B2-A/B/C 或驗證 B2 data path 時 |
 | `11_B2-C_SEMANTIC_UPDATE_CLOSED_LOOP_INCREMENT_DESIGN.md` | B2-C Semantic Update / Closed-Loop Integration 的 implementation boundary、ownership、closed-loop tests 與 release gate | 實作或驗證 B2-C 時 |

@@ -1,5 +1,21 @@
 # Implementation Gap Analysis
 
+> ## ⚠️ SUPERSEDED — 內容過期，僅作為歷史紀錄保留
+>
+> 本文撰寫於 Implementation Cycle 1 之後，當時的實作基線是 `b565f2a`。
+>
+> **本文後續的「Missing」判定已全部過期。** 其中列為 Missing 的
+> Observation Store、Context Compiler、Evidence / Knowledge semantics 與
+> Closed-loop semantic integration，實際上已在 B1 與 B2（A、B-B、B2-C1 ~ B2-C4）
+> 完成實作並通過驗證。
+>
+> 請改以 [`IMPLEMENTATION_STATUS.md`](../IMPLEMENTATION_STATUS.md) 作為實際現況來源。
+> 本文保留的價值在於：它記錄了「當時依據什麼做出這個缺口判斷」，
+> 以及後續的缺口判斷如何被證明是錯的。
+>
+> 專案已於 2026-09-28 停止開發，見
+> [`docs/00_PRODUCT_REDEFINITION_RESEARCH.md`](00_PRODUCT_REDEFINITION_RESEARCH.md)。
+
 ## Purpose
 
 This document records the post-Implementation-Cycle-1 comparison between the target specifications and the actual implementation baseline.

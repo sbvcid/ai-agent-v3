@@ -1,8 +1,40 @@
 # AI Agent v3 — Implementation Status
 
+> ## ⚠️ ARCHIVED — 開發已終止（2026-09-28）
+>
+> 本專案已停止開發，**不再接受以原始產品方向為目的的新功能開發**。
+> 本文件是**停止當時的現況快照**，不再是活的進度追蹤文件。
+>
+> 停止原因、判斷依據與後續的架構評估見
+> [`docs/00_PRODUCT_REDEFINITION_RESEARCH.md`](docs/00_PRODUCT_REDEFINITION_RESEARCH.md)。
+
 本文件是 **Current Implementation State** 的唯一集中入口。
 
 它描述 Repository 現在實際做到什麼，不重新定義 target architecture，也不產生新的 implementation Stage。
+
+## 0. Final Archival State
+
+```text
+Development: STOPPED (2026-09-28)
+Reason:     原始產品假設（以 deterministic Agent Core 補足弱 LLM 決策能力）
+            已被 2026 年的通用 Agent、模型與官方 runtime 快速解決
+Decision:   不再進入任何新的 implementation increment
+Repository: 保留為架構研究紀錄 / prototype / 未來專案參考 / OSS 展示
+License:    MIT
+```
+
+停止前完成的最後 increment：**B2-C4 — Failure and Atomicity Boundary Verification**（`21eff65`）。
+
+封存時必須被誠實記錄的結構性事實（**未修補，且不應修補**，因為修補等於回到已被否定的產品方向）：
+
+- `interpreter.rs` 只能產生 `AgentDecision::Act`；`Observe` / `Wait` / `Finish` 不可達。
+- `verify_goal()` 只被測試呼叫；provider-driven agent 結構上無法達成 `Done`。
+- 唯一的 production semantic producer 是 `NoOpSemanticUpdateProducer`。
+- `AgentState` 的 `hypotheses` / `unknowns` / `environment_state` / `running_jobs` / `remaining_work` / `active_problems` 沒有任何 production 寫入點。
+- `Runtime` trait 沒有 observation 能力。
+- `AgentDecision::Observe` 會把 LLM 意圖字串偽造成 Observation 寫入權威 store。
+- `SemanticUpdate` 未暴露 Hypothesis claim 路徑（`KnowledgeStore::record_claim()` 從未被 semantic boundary 呼叫）。
+- 無 `main.rs`、無 binary target、無 CI。
 
 ## 1. Current Status
 
@@ -17,7 +49,7 @@ B2-C2 — AgentLoop Integration Point: COMPLETED / VERIFIED
 B2-C3 — Deterministic Closed-Loop Integration: COMPLETED / VERIFIED / RELEASE GATE PASSED
 B2-C4 — Failure and Atomicity Boundary Verification: COMPLETED / VERIFIED / RELEASE GATE PASSED
 B2 — Knowledge Context Integration (B2-A, B2-B, B2-C): COMPLETED / RELEASE GATE PASSED
-Current overall state: deterministic closed-loop foundation + observation/context foundation + Evidence/Knowledge semantic foundation + Knowledge-aware provider context path + Core semantic update boundary & AgentLoop integration point (B2-C1 & B2-C2) + verified end-to-end closed-loop integration (B2-C3) + verified failure/atomicity boundary (B2-C4)
+Project: ARCHIVED / DEVELOPMENT STOPPED
 ```
 
 **Stage 10 尚未定義。** B1 與 B2 是經批准的 Agent Core semantic implementation increments，不自動建立 Stage 10。
@@ -746,6 +778,48 @@ B1 與 B2（B2-A、B2-B、B2-C1、B2-C2、B2-C3、B2-C4）已完成並通過驗�
 
 **B2 已正式關閉。** `docs/10` §3 定義的 B2-A / B2-B / B2-C 三個 sub-increments 皆已完成並通過 release gate。
 
-**目前沒有已定義的下一個 increment。** `docs/10` 未定義 B2-D，`docs/11` 已關閉，`docs/08` roadmap 的 C–G 項目仍各自需要獨立的 stable design、scope、non-goals、acceptance criteria 與使用者明確批准。
+**目前沒有已定義的下一個 increment。** `docs/10` 未定義 B2-D，`docs/11` 已關閉。
 
-不建立新的 Stage，也不因 B2 關閉而自動開始任何後續工作。Repository 停在目前已驗證的 B2 baseline，等待使用者指定下一個 increment 並提供其 approved design boundary。
+不建立新的 Stage。
+
+**2026-09-28 更新：專案已封存。** 重新研究 2026 年 Agent 生態後，確認「以 deterministic Agent Core 補足弱 LLM 決策能力」這個原始前提已被產業快速解決；`docs/08` roadmap 的 C–G 項目全部屬於會隨 LLM 能力提升而縮小的決策層職責，因此不予實作。
+
+Repository 停在已驗證的 B2-C4 baseline，不再推進任何後續 increment。
+
+## 11. Archival References
+
+```text
+docs/00_PRODUCT_REDEFINITION_RESEARCH.md
+  → 停止原因、2026 Agent 生態研究、既有 component 的 keep / replace / delete 評估、
+    五個候選產品方向的反證與收斂
+
+README.md
+  → 已改寫為封存說明 + 原始設計紀錄
+
+docs/06_IMPLEMENTATION_GAP_ANALYSIS.md
+  → 標記 SUPERSEDED（內容過期，保留作為歷史紀錄）
+
+docs/08_AGENT_CORE_ROADMAP.md
+  → 標記 NOT TAKEN（C–G 未實作，保留作為依賴關係分析紀錄）
+```
+
+停止前最後一次完整驗證：
+
+```text
+cargo fmt --check                                             PASS
+cargo clippy --all-targets --all-features -- -D warnings      PASS
+cargo check                                                   PASS
+cargo test                                                    PASS
+git diff --check                                              PASS
+```
+
+```text
+121 unit tests passed
+22 closed-loop tests passed   (既有 15 + B2-C3 4 + B2-C4 7)
+11 filesystem/process integration tests passed
+10 process execution tests passed
+6 schema checkpoint tests passed
+6 test doubles tests passed
+2 ollama provider tests passed
+3 ollama real integration tests ignored (需要執行中的 Ollama 環境)
+```
